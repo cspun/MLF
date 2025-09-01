@@ -26,9 +26,9 @@ Chapter 12.5.3, [ISLR2] An Introduction to Statistical Learning - with Applicati
 
 To see the help file of a function `funcname`, type `?funcname`.
 
-## $K$-Means Clustering
+## K-Means Clustering
 
-The function `kmeans()` performs $K$-means clustering in `R`.  We begin with a simple simulated example in which there truly are two clusters in the data: the first 25 observations have a mean shift relative to the next 25 observations.
+The function `kmeans()` performs K-means clustering in `R`.  We begin with a simple simulated example in which there truly are two clusters in the data: the first 25 observations have a mean shift relative to the next 25 observations.
 
 ```{r chunk28}
 set.seed(1)
@@ -37,7 +37,7 @@ x[1:25, 1] <- x[1:25, 1] + 3
 x[1:25, 2] <- x[1:25, 2] - 4
 ```
 
-We now perform $K$-means clustering with $K=2$.
+We now perform K-means clustering with K=2.
 
 ```{r chunk29}
 km.out <- kmeans(x, 2, nstart = 20)
@@ -49,7 +49,7 @@ The cluster assignments of the 50 observations are contained in  `km.out$cluster
 km.out$cluster
 ```
 
-The $K$-means clustering perfectly separated the observations into two clusters even though we did not supply any group information to `kmeans()`. We can plot the data, with each observation colored according to its cluster assignment.
+The K-means clustering perfectly separated the observations into two clusters even though we did not supply any group information to `kmeans()`. We can plot the data, with each observation colored according to its cluster assignment.
 
 ```{r chunk31}
 #par(mfrow = c(1, 2))
@@ -60,7 +60,7 @@ plot(x, col = (km.out$cluster + 1),
 
 <!-- Here the observations can be easily plotted because they are two-dimensional. If there were more than two variables then we could instead perform PCA and plot the first two principal components score vectors. -->
 
-In this example, we knew that there really were two clusters because we generated the data. However, for real data, in general we do not know the true number of clusters. We could instead have performed $K$-means clustering on this example with $K=3$.
+In this example, we knew that there really were two clusters because we generated the data. However, for real data, in general we do not know the true number of clusters. We could instead have performed K-means clustering on this example with K=3.
 
 ```{r chunk32}
 set.seed(2)
@@ -71,9 +71,9 @@ plot(x, col = (km.out$cluster + 1),
     xlab = "", ylab = "", pch = 20, cex = 2)
 ```
 
-When $K=3$, $K$-means clustering  splits up the two clusters.
+When K=3, K-means clustering  splits up the two clusters.
 
-To run the `kmeans()` function in `R` with multiple initial cluster assignments, we use the `nstart` argument. If a value of `nstart` greater than one is used, then $K$-means clustering will be performed using multiple random assignments in Step 1 of K-means Clustering Algorithm, and the `kmeans()` function will report only the best results. Here we compare using `nstart = 1` to `nstart = 20`.
+To run the `kmeans()` function in `R` with multiple initial cluster assignments, we use the `nstart` argument. If a value of `nstart` greater than one is used, then K-means clustering will be performed using multiple random assignments in Step 1 of K-means Clustering Algorithm, and the `kmeans()` function will report only the best results. Here we compare using `nstart = 1` to `nstart = 20`.
 
 ```{r chunk33}
 set.seed(3)
@@ -83,11 +83,11 @@ km.out <- kmeans(x, 3, nstart = 20)
 km.out$tot.withinss
 ```
 
-Note that `km.out$tot.withinss` is the total within-cluster sum of squares, which  we seek to minimize by performing $K$-means clustering. The individual within-cluster sum-of-squares are contained in the vector `km.out$withinss`.
+Note that `km.out$tot.withinss` is the total within-cluster sum of squares, which  we seek to minimize by performing K-means clustering. The individual within-cluster sum-of-squares are contained in the vector `km.out$withinss`.
 
-We *strongly* recommend always running $K$-means clustering with a large value of `nstart`, such as 20 or 50, since otherwise an undesirable local optimum may be obtained.
+We *strongly* recommend always running K-means clustering with a large value of `nstart`, such as 20 or 50, since otherwise an undesirable local optimum may be obtained.
 
-When performing $K$-means clustering, in addition to using multiple initial cluster assignments, it is also  important to set a random seed using the `set.seed()` function. This way, the initial cluster assignments in Step 1 can be replicated, and the $K$-means output will be fully reproducible.
+When performing K-means clustering, in addition to using multiple initial cluster assignments, it is also  important to set a random seed using the `set.seed()` function. This way, the initial cluster assignments in Step 1 can be replicated, and the K-means output will be fully reproducible.
 
 ## Hierarchical Clustering
 
@@ -155,7 +155,7 @@ plot(hclust(dd, method = "complete"),
 
 ## NCI60 Data Example
 
-Unsupervised techniques are often used in the analysis of genomic data. In particular, clustering and PCA are popular tools. We illustrate these techniques on the `NCI` cancer cell line microarray data, which consists of $6,830$ gene expression measurements on $64$ cancer cell lines.
+Unsupervised techniques are often used in the analysis of genomic data. In particular, clustering and PCA are popular tools. We illustrate these techniques on the `NCI` cancer cell line microarray data, which consists of 6,830 gene expression measurements on 64 cancer cell lines.
 
 ```{r chunk41}
 library(ISLR2)
@@ -165,7 +165,7 @@ nci.data <- NCI60$data
 
 Each cell line is labeled with a cancer type, given in `nci.labs`. We do not make use of the cancer types in performing clustering/PCA, as these are unsupervised techniques. But after performing clustering/PCA, we will check to see the extent to which these cancer types agree with the results of these unsupervised techniques.
 
-The data has $64$ rows and $6,830$ columns.
+The data has 64 rows and 6,830 columns.
 
 ```{r chunk42}
 dim(nci.data)
@@ -211,7 +211,7 @@ hc.clusters <- cutree(hc.out, 4)
 table(hc.clusters, nci.labs)
 ```
 
-There are some clear patterns. All the leukemia cell lines fall in cluster $3$, while the breast cancer cell lines are spread out over three different clusters. We can plot the cut on the dendrogram that produces these four clusters:
+There are some clear patterns. All the leukemia cell lines fall in cluster 3, while the breast cancer cell lines are spread out over three different clusters. We can plot the cut on the dendrogram that produces these four clusters:
 
 ```{r chunk53}
 par(mfrow = c(1, 1))
@@ -219,7 +219,7 @@ plot(hc.out, labels = nci.labs)
 abline(h = 139, col = "red")
 ```
 
-The `abline()` function draws a straight line on top of any existing plot in `R`. The argument `h = 139` plots a horizontal line at height $139$ on the dendrogram; this is the height that results in four distinct clusters. It is easy to verify that the resulting clusters are the same as the ones we obtained using `cutree(hc.out, 4)`.
+The `abline()` function draws a straight line on top of any existing plot in `R`. The argument `h = 139` plots a horizontal line at height 139 on the dendrogram; this is the height that results in four distinct clusters. It is easy to verify that the resulting clusters are the same as the ones we obtained using `cutree(hc.out, 4)`.
 
  
 Printing the output of `hclust` gives a useful brief summary of the object:
@@ -228,7 +228,7 @@ Printing the output of `hclust` gives a useful brief summary of the object:
 hc.out
 ```
 
-We claimed earlier that $K$-means clustering and hierarchical clustering with the dendrogram cut to obtain the same number of clusters can yield very different results. How do these `NCI` hierarchical clustering results compare to what we get if we perform $K$-means clustering with $K=4$?
+We claimed earlier that K-means clustering and hierarchical clustering with the dendrogram cut to obtain the same number of clusters can yield very different results. How do these `NCI` hierarchical clustering results compare to what we get if we perform K-means clustering with K=4?
 
 ```{r chunk55}
 set.seed(2)
@@ -237,4 +237,4 @@ km.clusters <- km.out$cluster
 table(km.clusters, hc.clusters)
 ```
 
-We see that the four clusters obtained using hierarchical clustering and $K$-means clustering  are somewhat different. Cluster $4$ in $K$-means clustering is identical to cluster $3$ in hierarchical clustering. However, the other clusters differ: for instance, cluster $2$ in $K$-means clustering contains a portion of the observations assigned to cluster 1 by hierarchical clustering, as well as all of the observations assigned to cluster $2$ by hierarchical clustering.
+We see that the four clusters obtained using hierarchical clustering and K-means clustering  are somewhat different. Cluster 4 in K-means clustering is identical to cluster 3 in hierarchical clustering. However, the other clusters differ: for instance, cluster 2 in K-means clustering contains a portion of the observations assigned to cluster 1 by hierarchical clustering, as well as all of the observations assigned to cluster 2 by hierarchical clustering.
