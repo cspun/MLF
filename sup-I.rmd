@@ -3,8 +3,6 @@ title: "Supervised Learning I - K-Nearest Neighbors and Resampling Methods"
 author: "Patrick PUN Chi Seng (NTU Sg)"
 output:
   html_document:
-    self_contained: false
-    mathjax: "https://personal.ntu.edu.sg/cspun/mathjax/tex-svg.js"
     df_print: paged
   pdf_document: default
 header-includes:
@@ -327,5 +325,6 @@ Here:
 `K = 5` specifies the number of nearest neighbors used when interpolating new synthetic points.
 
 The `table()` commands show how the class distribution becomes more balanced after SMOTE.
+
 
 *Note*. SMOTE creates more diverse samples than random oversampling, but if the classes overlap significantly, synthetic points may fall into ambiguous regions. Careful use of SMOTE is recommended when decision boundaries are not well-separated.
