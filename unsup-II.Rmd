@@ -3,8 +3,6 @@ title: "Unsupervised Learning II - Dimension Reduction"
 author: "Patrick PUN Chi Seng (NTU Sg)"
 output:
   html_document:
-    self_contained: false
-    mathjax: "https://personal.ntu.edu.sg/cspun/mathjax/tex-svg.js"
     df_print: paged
   pdf_document: default
 header-includes:
@@ -219,5 +217,6 @@ hc.out <- hclust(dist(scale(nci.data)))
 hc.clusters <- cutree(hc.out, 4)
 table(hc.clusters, nci.labs)
 ```
+
 
 Sometimes performing clustering on the first few principal component score vectors can give better results than performing clustering on the full data. In this situation, we might view the principal component step as one of denoising the data. We could also perform $K$-means clustering on the first few principal component score vectors rather than the full data set.
