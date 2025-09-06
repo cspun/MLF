@@ -1,0 +1,646 @@
+---
+title: "Supervised Learning II - Regression and Regularization"
+author: "Patrick PUN Chi Seng (NTU Sg)"
+output:
+  html_document:
+    self_contained: false
+    mathjax: "https://personal.ntu.edu.sg/cspun/mathjax/tex-svg.js"
+    df_print: paged
+  pdf_document: default
+header-includes:
+- \usepackage{fancyhdr}
+- \pagestyle{fancy}
+- \fancyfoot[C]{\thepage}
+- \fancypagestyle{plain}{\pagestyle{fancy}}
+- \fancyhead[L]{Machine Learning in Finance}
+- \fancyhead[R]{R Lab - Regression and Regularization}
+---
+
+
+```{r global_options, include=FALSE}
+library(knitr)
+knitr::opts_chunk$set(eval=TRUE)
+```
+
+## References
+
+Chapters 3.6, 6.5.2 [ISLR2] An Introduction to Statistical Learning - with Applications in R (2nd Edition). Free access to download the book: https://www.statlearning.com/
+
+To see the help file of a function `funcname`, type `?funcname`.
+
+## Simple Linear Regression
+<!-- The ISLR2 library contains the Boston data set, which records medv (median house value) for $506$ census tracts in Boston. We will seek to predict medv using $12$ predictors such as rmvar (average number of rooms per house), age (proportion of owner-occupied units built prior to 1940) and lstat (percent of households with low socioeconomic status). -->
+The `ISLR2` library’s `Boston` data set records `medv` (median home value) for 506 census tracts along with 12 predictors such as `rm` (avg. rooms), `age` (pre-1940 owner-occupied %), and `lstat` (low-SES %). We’ll model `medv` using these variables.
+
+```{r chunk2}
+library(MASS)
+library(ISLR2)
+head(Boston)
+```
+
+<!-- To find out more about the data set, we can type `?Boston`. -->
+
+<!-- We will start by using the `lm()` function to fit a simple  linear regression model, with `medv` as the response and `lstat`  as the predictor. The basic syntax is `lm(y ~ x, data)`, where `y` is the response, `x` is the predictor, and `data` is the data set in which these two variables are kept. -->
+See `?Boston` for details.
+
+We first fit a simple linear regression of `medv` on `lstat`. The syntax is `lm(y ~ x, data)`.
+
+```{r chunk3, error=TRUE}
+lm.fit <- lm(medv ~ lstat)
+```
+
+<!-- The command causes an error because `R` does not know where to find the variables `medv` and `lstat`. The next line tells `R` that the variables are in `Boston`. If we attach `Boston`, the first line works fine because `R` now recognizes the variables. -->
+This errors because `R` doesn’t yet know where `medv`/`lstat` live. Tell `R` to use `Boston` (or attach it).
+```{r chunk4}
+lm.fit <- lm(medv ~ lstat, data = Boston)
+attach(Boston)
+lm.fit <- lm(medv ~ lstat)
+```
+
+<!-- If we type `lm.fit`,  some basic information about the model is output. For more detailed information, we use `summary(lm.fit)`. This gives us $p$-values and standard errors for the coefficients, as well as the $R^2$ statistic and $F$-statistic for the model. -->
+Print the fit for a quick glance; use summary() for coefficients, standard errors, $R^2$, and the $F$-statistic.
+```{r chunk5}
+lm.fit
+summary(lm.fit)
+```
+
+<!-- We can use the `names()` function in order to find out what other pieces of information  are stored in `lm.fit`. Although we can extract these quantities by name---e.g. `lm.fit$coefficients`---it is safer to use the extractor functions like `coef()` to access them. -->
+Use `names()` to see stored components; prefer extractor functions like `coef()` over `$`.
+```{r chunk6}
+names(lm.fit)
+coef(lm.fit)
+```
+
+<!-- In order to obtain a confidence interval for the coefficient estimates, we can use the `confint()` command. -->
+Confidence intervals for coefficients:
+```{r chunk7}
+confint(lm.fit)
+```
+
+<!-- The `predict()` function can be used to produce confidence intervals and prediction intervals for the prediction of `medv` for a given value of `lstat`. -->
+Predicted `medv` with confidence and prediction intervals at selected `lstat` values:
+```{r chunk8}
+predict(lm.fit, data.frame(lstat = (c(5, 10, 15))),
+    interval = "confidence")
+predict(lm.fit, data.frame(lstat = (c(5, 10, 15))),
+    interval = "prediction")
+```
+
+<!-- For instance, the 95 \% confidence interval associated with a `lstat` value of 10 is $(24.47, 25.63)$, and the 95 \% prediction interval is $(12.828, 37.28)$. As expected, the confidence and prediction intervals are centered around the same point (a predicted value of $25.05$ for `medv` when `lstat` equals 10), but the latter are substantially wider. -->
+
+<!-- We will now plot `medv` and `lstat` along with the least squares regression line using the `plot()` and `abline()` functions. -->
+For `lstat = 10`, the 95\% confidence interval is $(24.47, 25.63)$ and the prediction interval is $(12.828, 37.28)$: same center, wider spread for predictions.
+
+Plot the data and the least-squares line:
+```{r chunk9}
+plot(lstat, medv)
+abline(lm.fit)
+```
+
+<!-- There is some evidence for non-linearity in the relationship between `lstat` and `medv`. We will explore this issue  later in this lab. -->
+
+<!-- The `abline()` function can be used to draw any line, not just the least squares regression line. To draw a line with intercept `a` and slope `b`, we  type `abline(a, b)`. Below we experiment with some additional settings for plotting lines and points. The `lwd = 3` command causes the width of the regression line to be increased by a factor of 3;  this works for the `plot()` and `lines()` functions also. We can also use the `pch` option to create different plotting symbols. -->
+There is visible non-linearity; we revisit this later.
+
+`abline(a, b)` draws a line with intercept `a` and slope `b`. Below are quick styling examples (`lwd`, `col`, `pch`).
+```{r chunk10}
+plot(lstat, medv)
+abline(lm.fit, lwd = 3)
+abline(lm.fit, lwd = 3, col = "red")
+plot(lstat, medv, col = "red")
+plot(lstat, medv, pch = 20)
+plot(lstat, medv, pch = "+")
+plot(1:20, 1:20, pch = 1:20)
+```
+
+<!-- Next we examine some diagnostic plots, several of which were discussed in Section 3.3.3. Four diagnostic plots are automatically produced by applying the `plot()` function directly to the output from `lm()`. In general, this command will produce one plot at a time, and hitting *Enter* will generate the next plot. However, it is often convenient to view all four plots together. We can achieve this by using the `par()` and `mfrow()` functions, which tell `R` to split the display screen into separate panels so that multiple plots can be viewed simultaneously. For example,  `par(mfrow = c(2, 2))` divides the plotting region into a $2 \times 2$ grid of panels. -->
+Diagnostic plots (Section 3.3.3). Use a $2 \times 2$ grid to view all at once:
+```{r chunk11}
+par(mfrow = c(2, 2))
+plot(lm.fit)
+```
+
+<!-- Alternatively, we can compute the residuals from a linear regression fit using the `residuals()` function. The function `rstudent()` will return the studentized residuals, and we can use this function to plot the residuals against the fitted values. -->
+Residual diagnostics (raw and studentized) versus fitted values:
+```{r chunk12}
+plot(predict(lm.fit), residuals(lm.fit))
+plot(predict(lm.fit), rstudent(lm.fit))
+```
+
+<!-- On the basis of the residual plots, there is some evidence of non-linearity. Leverage statistics can be computed for any number of predictors using the `hatvalues()` function. -->
+Leverage diagnostics via hat values:
+```{r chunk13}
+plot(hatvalues(lm.fit))
+which.max(hatvalues(lm.fit))
+```
+
+<!-- The `which.max()` function identifies the index of the largest element of a vector. In this case, it tells us which observation has the largest leverage statistic. -->
+`which.max()` returns the index of the largest leverage.
+
+## Multiple Linear Regression
+
+<!-- In order to fit a multiple linear regression model using least squares, we again use the `lm()` function. The syntax `lm(y ~ x1 + x2 + x3)` is used to fit a model with three predictors, `x1`, `x2`, and `x3`. The `summary()` function now outputs the regression coefficients for all the predictors. -->
+Fit multiple regression with `lm(y ~ x1 + x2 + x3)`; `summary()` reports all coefficients.
+```{r chunk14}
+lm.fit <- lm(medv ~ lstat + age, data = Boston)
+summary(lm.fit)
+```
+
+<!-- The `Boston` data set contains 12 variables, and so it would be cumbersome to have to type all of these in order to perform a regression using all of the predictors. Instead, we can use the following short-hand: -->
+Use all predictors succinctly with `.`:
+```{r chunk15}
+lm.fit <- lm(medv ~ ., data = Boston)
+summary(lm.fit)
+```
+
+<!-- We can access the individual components of a summary object by name (type `?summary.lm` to see what is available). Hence `summary(lm.fit)$r.sq` gives us the $R^2$, and `summary(lm.fit)$sigma` gives us the RSE. The `vif()` function, part of the `car` package, can be used to compute variance inflation factors.  Most VIF's are low to moderate for this data. The `car` package is not part of the base `R` installation so it must be downloaded the first time you use it via the `install.packages()` function in `R`. -->
+<!-- Selected summary elements and multicollinearity: `summary(lm.fit)$r.sq`, `summary(lm.fit)$sigma`; VIFs via `car::vif()` (install package `car` if needed). -->
+<!-- ```{r chunk16} -->
+<!-- # install.packages("car") -->
+<!-- library(car) -->
+<!-- vif(lm.fit) -->
+<!-- ``` -->
+
+<!-- What if we would like to perform a regression using all of the variables but one?  For example, in the above regression output,  `age` has a high $p$-value. So we may wish to run a regression excluding this predictor. The following syntax results in a regression using all predictors except `age`. -->
+Exclude a predictor (e.g., `age`) using formula shorthand or `update()`:
+```{r chunk17}
+lm.fit1 <- lm(medv ~ . - age, data = Boston)
+summary(lm.fit1)
+```
+
+<!-- Alternatively, the `update()` function can be used. -->
+
+```{r chunk18}
+lm.fit1 <- update(lm.fit, ~ . - age)
+```
+
+
+### Interaction Terms
+
+<!-- It is easy to include interaction terms in a linear model using the `lm()` function. The syntax `lstat:age` tells `R` to include an interaction term between `lstat` and `age`. The syntax `lstat * age` simultaneously includes `lstat`, `age`, and the interaction term `lstat`$\times$`age` as predictors; it is a shorthand for `lstat + age + lstat:age`. -->
+Include interactions with `:` or `*` (the latter expands to main effects + interaction):
+```{r chunk19}
+summary(lm(medv ~ lstat * age, data = Boston))
+```
+
+### Non-linear Transformations of the Predictors
+
+<!-- The `lm()` function can also accommodate non-linear transformations of the predictors. For instance, given a predictor $X$, we can create a predictor $X^2$ using `I(X^2)`. The function `I()` is needed since the `^` has a special meaning in a formula object; wrapping as we do allows the standard usage in `R`, which is to raise `X` to the power `2`. We now perform a regression of `medv` onto `lstat` and `lstat^2`. -->
+Create polynomial terms with `I(X^2)` (the `I()` ensures exponentiation inside formulas). Fit a quadratic in `lstat`:
+```{r chunk20}
+lm.fit2 <- lm(medv ~ lstat + I(lstat^2))
+summary(lm.fit2)
+```
+
+<!-- The near-zero $p$-value associated with the quadratic term suggests that it leads to an improved model. We use the `anova()` function  to further quantify the extent to which the quadratic fit is superior to the linear fit. -->
+<!-- Compare linear vs quadratic with `anova()`: -->
+<!-- ```{r chunk21} -->
+<!-- lm.fit <- lm(medv ~ lstat) -->
+<!-- anova(lm.fit, lm.fit2) -->
+<!-- ``` -->
+
+<!-- Here Model 1 represents the linear submodel containing only one predictor, `lstat`, while Model 2 corresponds to the larger quadratic model that has two predictors, `lstat` and `lstat^2`. -->
+
+<!-- The `anova()` function performs a hypothesis test comparing the two models. The   null hypothesis is that the two models fit the data equally well,  and the alternative hypothesis is that the full model is superior. Here the $F$-statistic is $135$ and the associated $p$-value is virtually zero. This provides very clear evidence that the model containing the predictors `lstat` and `lstat^2` is far superior to the model that only contains the predictor `lstat`. This is not surprising, since earlier we saw evidence for non-linearity in the relationship between `medv` and `lstat`. If we type -->
+Quadratic terms markedly improve fit; residuals look cleaner:
+```{r chunk22}
+par(mfrow = c(2, 2))
+plot(lm.fit2)
+```
+
+<!-- We see that when the `lstat^2` term is included in the model, there is little discernible pattern in the residuals. -->
+
+<!-- In order to create a cubic fit, we can include a predictor of the form `I(X^3)`. However, this approach can start to get cumbersome for higher-order polynomials. A better approach involves using the `poly()` function to create the polynomial within `lm()`. For example, the following command produces a fifth-order polynomial fit: -->
+Higher-order polynomials via `poly()` (orthogonal by default). Fifth-order example:
+```{r chunk23}
+lm.fit5 <- lm(medv ~ poly(lstat, 5))
+summary(lm.fit5)
+```
+
+<!-- This suggests that including additional  polynomial terms, up to fifth order, leads to an improvement in the model fit! However, further investigation of the data reveals that no polynomial terms beyond fifth order have significant $p$-values -->
+<!-- in a regression fit. -->
+
+<!-- By default, the `poly()` function orthogonalizes the predictors: this means that the features output by this function are not simply a sequence of powers of the argument. However, a linear model applied to the output of the `poly()` function will have the same fitted values as a linear model applied to the raw polynomials (although the coefficient estimates, standard errors, and p-values will differ). In order to obtain the raw polynomials from the `poly()` function,  the argument `raw = TRUE` must be used. -->
+
+<!-- Of course, we are in no way restricted to using polynomial transformations of the predictors. Here we try a log transformation. -->
+Orthogonal polynomials change coefficient interpretation but not fitted values versus raw powers; use `raw = TRUE` for raw polynomials.
+
+Log transforms are also possible:
+```{r chunk24}
+summary(lm(medv ~ log(rm), data = Boston))
+```
+
+
+## Qualitative Predictors
+
+<!-- We will now examine the `Carseats` data, which is part of the `ISLR2` library. We will  attempt to predict `Sales` (child car seat sales) in $400$ locations based on a number of predictors. -->
+The `Carseats` data include qualitative predictors like `ShelveLoc` (Bad/Medium/Good). R creates dummy variables automatically; we can include interactions too.
+```{r chunk25}
+head(Carseats)
+```
+
+<!-- The `Carseats` data includes qualitative predictors such as `shelveloc`, an indicator of the quality of the shelving location---that is, the  space within a store in which the car seat is displayed---at each location. The predictor `shelveloc` takes on three possible values:  *Bad*, *Medium*, and *Good*. Given a qualitative variable such as `shelveloc`, `R` generates dummy variables automatically. Below we fit a multiple regression model that includes some interaction terms. -->
+
+```{r chunk26}
+lm.fit <- lm(Sales ~ . + Income:Advertising + Price:Age, data = Carseats)
+summary(lm.fit)
+```
+
+<!-- The `contrasts()` function returns the coding that `R` uses for the dummy variables. -->
+Inspect dummy coding with `contrasts()`:
+```{r chunk27}
+attach(Carseats)
+contrasts(ShelveLoc)
+```
+
+<!-- Use `?contrasts` to learn about other contrasts, and how to set them. -->
+
+<!-- `R` has created a `ShelveLocGood` dummy variable that takes on a value of 1 if the shelving location is good, and 0 otherwise. It has also created a `ShelveLocMedium` dummy variable that equals 1 if the shelving location is medium, and 0 otherwise. A bad shelving location corresponds to a zero for each of the two dummy variables. The fact that the coefficient for `ShelveLocGood` in the regression output is positive indicates that a good shelving location is associated with high sales (relative to a bad location). And `ShelveLocMedium` has a smaller positive coefficient, indicating that a medium shelving location is associated with higher sales than a bad shelving location but lower sales than a good shelving location. -->
+By default, Bad is the baseline; positive coefficients for `ShelveLocGood` and `ShelveLocMedium` indicate higher sales relative to Bad (with Good > Medium). See `?contrasts` for alternative codings.
+
+## Regularization: Ridge Regression and the Lasso
+<!-- Here we apply the regularization approach to the `Hitters` data. We wish to predict a baseball player's `Salary` on the basis of various statistics associated with performance in the previous year. -->
+
+<!-- First of all, we note that the `Salary` variable is missing for some of the players.  The `is.na()` function can be used to identify the missing observations. It returns a vector of the same length as the input vector, with a `TRUE` for any elements that are missing, and a `FALSE` for non-missing elements. The `sum()` function can then be used to count all of the missing elements. -->
+Here we apply regularization to the `Hitters` data, aiming to predict a baseball player’s `Salary` from performance statistics in the previous year.
+
+The `Salary` variable contains missing values. The `is.na()` function flags missing entries with `TRUE`, and `sum()` counts them.
+```{r}
+library(ISLR2)
+names(Hitters)
+dim(Hitters)
+sum(is.na(Hitters$Salary))
+```
+
+<!-- Hence we see that `Salary` is missing for $59$ players. The `na.omit()` function removes all of the rows that have missing values in any variable. -->
+We find that `Salary` is missing for 59 players. To proceed, we remove rows with missing values using `na.omit()`.
+```{r}
+Hitters <- na.omit(Hitters)
+dim(Hitters)
+sum(is.na(Hitters))
+```
+
+We will use the `glmnet` package in order to perform ridge regression and the lasso.
+The main function in this package is `glmnet()`, which can be used to fit ridge regression models, lasso models, and more.
+<!-- This function has slightly different syntax from other model-fitting functions that we have encountered thus far in this book. In particular, we must pass in an `x` matrix as well as a `y` vector, and we do not use the `y ~ x` syntax. We will now perform ridge regression and the lasso in order to predict `Salary` on the `Hitters` data. Before proceeding ensure that the missing values have been removed from the data, as described in Section 6.5.1. -->
+We use the `glmnet` package for ridge regression and the lasso. The main function `glmnet()` fits both models but uses different syntax: we must pass an `x` matrix of predictors and a `y` response vector, rather than a formula. Before proceeding, ensure missing values are removed from `Hitters` (see Section 6.5.1).
+```{r}
+x <- model.matrix(Salary ~ ., Hitters)[, -1]
+y <- Hitters$Salary
+```
+
+<!-- The `model.matrix()` function is particularly useful for creating `x`; not only does it produce a matrix corresponding to the $19$ predictors but it also automatically transforms any qualitative variables into dummy variables. The latter property is important because `glmnet()` can only take numerical, quantitative inputs. -->
+`model.matrix()` conveniently creates `x`: it includes the 19 predictors and automatically converts qualitative variables into dummies. This is essential since `glmnet()` only accepts numeric inputs.
+
+### Ridge Regression
+
+<!-- The `glmnet()` function has an `alpha` argument that determines what type of model is fit. If `alpha=0` then a ridge regression model is fit, and if `alpha=1` then a lasso model is fit. We first fit a ridge regression model. -->
+
+```{r}
+library(glmnet)
+grid <- 10^seq(10, -2, length = 100)
+ridge.mod <- glmnet(x, y, alpha = 0, lambda = grid, standardize = TRUE)
+```
+
+<!-- By default the `glmnet()` function performs ridge regression for an automatically selected range of $\lambda$ values. However, here we have chosen to implement the function over a grid of values ranging from $\lambda=10^{10}$ to $\lambda=10^{-2}$, essentially covering the full range of scenarios from the null model containing only the intercept, to the least squares fit. As we will see, we can also compute model fits for a particular value of $\lambda$ that is not one of the original `grid` values. Note that by default, the `glmnet()` function standardizes the variables so that they are on the same scale. To turn off this default setting, use the argument `standardize = FALSE`. -->
+
+<!-- Associated with each value of $\lambda$ is a vector of ridge regression coefficients, stored in a matrix that can be accessed by `coef()`. In this case, it is a $20 \times 100$ matrix, with $20$ rows (one for each predictor, plus an intercept) and $100$ columns (one for each value of $\lambda$). -->
+By default, `glmnet()` selects its own grid of $\lambda$ values; here we specify one ranging from $10^{10}$ to $10^{-2}$. This spans from the intercept-only model to least squares. Variables are standardized by default (`standardize=FALSE` disables this).
+
+Each $\lambda$ has an associated coefficient vector stored in a $20 \times 100$ matrix: 20 rows (19 predictors + intercept), 100 columns (grid values).
+
+```{r}
+dim(coef(ridge.mod))
+```
+
+<!-- We expect the coefficient estimates to be much smaller, in terms of $\ell_2$ norm, when a large value of $\lambda$ is used, as compared to when a small value of $\lambda$ is used. These are the coefficients when $\lambda=11{,}498$, along with their $\ell_2$ norm: -->
+Coefficient norms shrink with larger $\lambda$. For $\lambda=11,498$:
+```{r}
+ridge.mod$lambda[50]
+coef(ridge.mod)[, 50]
+sqrt(sum(coef(ridge.mod)[-1, 50]^2))
+```
+
+<!-- In contrast, here are the coefficients when $\lambda=705$, along with their $\ell_2$ norm. Note the much larger $\ell_2$ norm of the coefficients associated with this smaller value of $\lambda$. -->
+For $\lambda=705$, the $\ell_2$ norm is much larger:
+```{r}
+ridge.mod$lambda[60]
+coef(ridge.mod)[, 60]
+sqrt(sum(coef(ridge.mod)[-1, 60]^2))
+```
+
+<!-- We can use the `predict()` function for a number of purposes. For instance, we can obtain the ridge regression coefficients for a new value of $\lambda$, say $50$: -->
+We can obtain coefficients for any $\lambda$, even if not in the original grid:
+```{r}
+predict(ridge.mod, s = 50, type = "coefficients")[1:20, ]
+```
+
+<!-- We  now split the samples into a training set and a test set in order to estimate the test error of ridge regression and the lasso. There are two common ways to randomly split a data set. The first is to produce a random vector of `TRUE`, `FALSE` elements and select the observations corresponding to `TRUE` for the training data. The second is to randomly choose a subset of numbers between $1$ and $n$; these can then be used as the indices for the training observations. The two approaches work equally well. We used the former method in Section 6.5.1. Here we demonstrate the latter approach. -->
+
+<!-- We first set a random seed so that the results obtained will be reproducible. -->
+Next we split the data into training and test sets to estimate test error. One way is to randomly select half the observations for training.
+```{r}
+set.seed(1)
+train <- sample(1:nrow(x), nrow(x)/2)
+test <- (-train)
+y.test <- y[test]
+```
+
+<!-- Next we fit a ridge regression model on the training set, and evaluate its MSE on the test set, using $\lambda=4$.  Note the use of the `predict()` function again. This time we get predictions for a test set, by replacing `type="coefficients"` with the `newx` argument. -->
+Fit ridge on the training set and evaluate MSE on the test set at $\lambda=4$:
+```{r}
+ridge.mod <- glmnet(x[train, ], y[train], alpha = 0, lambda = grid, thresh = 1e-12, standardize = TRUE)
+ridge.pred <- predict(ridge.mod, s = 4, newx = x[test, ])
+mean((ridge.pred - y.test)^2)
+```
+
+<!-- The test MSE is $142{,}199$. Note that if we had instead simply fit a model with just an intercept, we would have predicted each test observation using the mean of the training observations. In that case, we could compute the test set MSE like this: -->
+The test MSE is 142,199. If we had fit only an intercept, the prediction would be the training mean:
+```{r}
+mean((mean(y[train]) - y.test)^2)
+```
+
+<!-- We could also get the same result by fitting a ridge regression model with a *very* large value of $\lambda$. Note that `1e10` means $10^{10}$. -->
+This matches ridge with a very large $\lambda$:
+```{r}
+ridge.pred <- predict(ridge.mod, s = 1e10, newx = x[test, ])
+mean((ridge.pred - y.test)^2)
+```
+
+<!-- So fitting a ridge regression model with $\lambda=4$ leads to a much lower test MSE than fitting a model with just an intercept. -->
+
+<!-- We now check whether there is any benefit to performing ridge regression with $\lambda=4$ instead of just performing least squares regression. Recall that least squares is simply ridge regression with $\lambda=0$. (In order for `glmnet()` to yield the exact least squares coefficients when $\lambda=0$, we use the argument `exact = T` when calling the `predict()` function. Otherwise, the `predict()` function will interpolate over the grid of $\lambda$ values used in fitting the `glmnet()` model, yielding approximate results. When we use `exact = T`, there remains a slight discrepancy in the third decimal place between the output of `glmnet()` when $\lambda = 0$ and the output of `lm()`; this  is due to numerical approximation on the part of `glmnet()`.) -->
+
+Thus $\lambda=4$ yields a far lower test MSE than the null model. But is it better than least squares? Recall least squares is ridge with $\lambda=0$. With `exact=TRUE`, `glmnet()` reproduces the least squares fit:
+```{r}
+ridge.pred <- predict(ridge.mod, s = 0, newx = x[test, ], exact = T, x = x[train, ], y = y[train])
+mean((ridge.pred - y.test)^2)
+lm(y ~ x, subset = train)
+predict(ridge.mod, s = 0, exact = T, type = "coefficients",
+    x = x[train, ], y = y[train])[1:20, ]
+```
+
+<!-- In general,  if we want to fit a (unpenalized) least squares model, then we should use the `lm()` function, since that function provides more useful outputs, such as standard errors and p-values for the coefficients. -->
+
+<!-- In general, instead of arbitrarily choosing $\lambda=4$, it would be better to use cross-validation to choose the tuning parameter $\lambda$. We can do this using the built-in cross-validation function, `cv.glmnet()`.  By default, the function performs ten-fold cross-validation, though this can be changed using the argument `nfolds`. Note that we set a random seed first so our results will be reproducible, since the choice of the cross-validation folds is random. -->
+In practice, use `lm()` for unpenalized regression, since it provides standard errors and p-values.
+
+Rather than fixing $\lambda=4$, cross-validation gives a better choice. `cv.glmnet()` performs (by default) 10-fold CV. Set a seed for reproducibility.
+```{r chunk36}
+set.seed(1)
+cv.out <- cv.glmnet(x[train, ], y[train], alpha = 0, standardize = TRUE)
+plot(cv.out)
+bestlam <- cv.out$lambda.min
+bestlam
+```
+
+<!-- Therefore, we see that the value of $\lambda$ that results in the smallest cross-validation error is $326$. What is the test MSE associated with this value of $\lambda$? -->
+The best $\lambda$ is 326. The test MSE is:
+```{r}
+ridge.pred <- predict(ridge.mod, s = bestlam, newx = x[test, ])
+mean((ridge.pred - y.test)^2)
+```
+
+<!-- This represents a further improvement over the test MSE that we got using $\lambda=4$. Finally, we refit our ridge regression model on the full data set, using the value of $\lambda$ chosen by cross-validation, and examine the coefficient estimates. -->
+This improves over $\lambda=4$. Finally, refit ridge on the full data using the CV $\lambda$:
+```{r}
+out <- glmnet(x, y, alpha = 0, standardize = TRUE)
+predict(out, type = "coefficients", s = bestlam)[1:20, ]
+```
+
+<!-- As expected, none of the coefficients are zero---ridge regression does not perform variable selection! -->
+As expected, no coefficients are exactly zero: ridge does not perform variable selection.
+
+### The Lasso
+
+<!-- We saw that ridge regression with a wise choice of $\lambda$ can outperform least squares as well as the null model on the `Hitters` data set. We now ask whether the lasso can yield either a more accurate or a more interpretable model than ridge regression. In order to fit a lasso model, we once again use the `glmnet()` function; however, this time we use the argument `alpha=1`. Other than that change, we proceed just as we did in fitting a ridge model. -->
+Can the lasso produce a more accurate or sparser model? Fit it with `alpha=1`:
+```{r}
+lasso.mod <- glmnet(x[train, ], y[train], alpha = 1, lambda = grid, standardize = TRUE)
+plot(lasso.mod)
+```
+
+<!-- We can see from the coefficient plot that depending on the choice of tuning parameter, some of the coefficients will be exactly equal to zero. We now perform cross-validation and compute the associated test error. -->
+The coefficient plot shows some coefficients shrink exactly to zero, depending on $\lambda$. Use cross-validation to choose $\lambda$:
+```{r}
+set.seed(1)
+cv.out <- cv.glmnet(x[train, ], y[train], alpha = 1, standardize = TRUE)
+plot(cv.out)
+bestlam <- cv.out$lambda.min
+lasso.pred <- predict(lasso.mod, s = bestlam, newx = x[test, ])
+mean((lasso.pred - y.test)^2)
+```
+
+<!-- This is substantially lower than the test set MSE of the null model and of least squares, and very similar to the test MSE of ridge regression with $\lambda$ chosen by cross-validation. -->
+
+<!-- However, the lasso has a substantial advantage over ridge regression in that the resulting coefficient estimates are sparse. Here we see that 8 of the 19 coefficient estimates are exactly zero. So the lasso model with $\lambda$ chosen by cross-validation contains only eleven variables. -->
+The lasso test MSE is similar to ridge with CV $\lambda$, but with the advantage of sparsity: 8 of 19 predictors are set to zero.
+```{r}
+out <- glmnet(x, y, alpha = 1, lambda = grid, standardize = TRUE)
+lasso.coef <- predict(out, type = "coefficients", s = bestlam)[1:20, ]
+lasso.coef
+lasso.coef[lasso.coef != 0]
+```
+
+## (Self-study) Appendix: Subset Selection Methods
+
+### Best Subset Selection
+The `regsubsets()` function (part of the `leaps` library) performs best subset selection by identifying the best model that contains a given number of predictors, where *best* is quantified using RSS. The syntax is the same as for `lm()`. The `summary()` command outputs the best set of variables for each model size.
+
+```{r}
+library(leaps)
+regfit.full <- regsubsets(Salary ~ ., Hitters)
+summary(regfit.full)
+```
+
+An asterisk indicates that a given variable is included in the corresponding model. For instance, this output indicates that the best two-variable model contains only `Hits` and `CRBI`. By default, `regsubsets()` only reports results up to the best eight-variable model. But the  `nvmax` option can be used in order to return as many variables as are desired. Here we fit up to a 19-variable model.
+
+```{r}
+regfit.full <- regsubsets(Salary ~ ., data = Hitters, nvmax = 19)
+reg.summary <- summary(regfit.full)
+```
+
+The `summary()` function also returns $R^2$, RSS, adjusted $R^2$, $C_p$, and BIC. We can examine these to try to select the *best* overall model.
+
+```{r}
+names(reg.summary)
+```
+
+For instance, we see that the $R^2$ statistic increases from $32 \%$, when only one variable is included in the model, to almost $55 \%$, when all variables are included. As expected, the $R^2$ statistic increases monotonically as more variables are included.
+
+```{r}
+reg.summary$rsq
+```
+
+Plotting RSS, adjusted $R^2$, $C_p$, and BIC for all of the models at once will help us decide which model to select. Note the `type = "l"` option tells `R` to connect the plotted points with lines.
+
+```{r}
+par(mfrow = c(1, 2))
+plot(reg.summary$rss, xlab = "Number of Variables", ylab = "RSS", type = "l")
+plot(reg.summary$adjr2, xlab = "Number of Variables", ylab = "Adjusted RSq", type = "l")
+```
+
+The `points()` command works like the `plot()` command, except that it puts points on a plot that has already been created, instead of creating a new plot. The `which.max()` function can be used to identify the location of the maximum point of a vector. We will now plot a red dot to indicate the model with the largest adjusted $R^2$ statistic.
+
+```{r}
+which.max(reg.summary$adjr2)
+plot(reg.summary$adjr2, xlab = "Number of Variables", ylab = "Adjusted RSq", type = "l")
+points(11, reg.summary$adjr2[11], col = "red", cex = 2, pch = 20)
+```
+
+In a similar fashion we can plot the $C_p$ and BIC statistics, and indicate the models with the smallest statistic using `which.min()`.
+
+```{r}
+plot(reg.summary$cp, xlab = "Number of Variables", ylab = "Cp", type = "l")
+which.min(reg.summary$cp)
+points(10, reg.summary$cp[10], col = "red", cex = 2, pch = 20)
+which.min(reg.summary$bic)
+plot(reg.summary$bic, xlab = "Number of Variables", ylab = "BIC", type = "l")
+points(6, reg.summary$bic[6], col = "red", cex = 2, pch = 20)
+```
+
+The `regsubsets()` function has a built-in `plot()` command which can be used to display the selected variables for the best model with a given number of predictors, ranked according to the BIC, $C_p$, adjusted $R^2$, or AIC. To find out more about this function, type `?plot.regsubsets`.
+
+```{r}
+plot(regfit.full, scale = "r2")
+plot(regfit.full, scale = "adjr2")
+plot(regfit.full, scale = "Cp")
+plot(regfit.full, scale = "bic")
+```
+
+The top row of each plot contains a black square for each variable selected according to the optimal model associated with that statistic. For instance, we see that several models share a BIC close to $-150$. However, the model with the lowest BIC is the six-variable model that contains only `AtBat`, `Hits`,  `Walks`, `CRBI`, `DivisionW`, and `PutOuts`.
+
+We can use the `coef()` function to see the coefficient estimates associated with this model.
+
+```{r}
+coef(regfit.full, 6)
+```
+
+### Forward and Backward Stepwise Selection
+
+We can also use the `regsubsets()` function to perform forward stepwise or backward stepwise selection, using the argument `method = "forward"` or `method = "backward"`.
+
+```{r}
+regfit.fwd <- regsubsets(Salary ~ ., data = Hitters, nvmax = 19, method = "forward")
+summary(regfit.fwd)
+regfit.bwd <- regsubsets(Salary ~ ., data = Hitters, nvmax = 19, method = "backward")
+summary(regfit.bwd)
+```
+
+For instance, we see that using forward stepwise selection, the best one-variable model contains only `CRBI`, and the best two-variable model additionally includes `Hits`. For this data, the best one-variable through six-variable models are each identical for best subset and forward selection. However, the best seven-variable models identified by forward stepwise selection, backward stepwise selection, and best subset selection are different.
+
+```{r}
+coef(regfit.full, 7)
+coef(regfit.fwd, 7)
+coef(regfit.bwd, 7)
+```
+
+### Choosing Among Models Using the Validation-Set Approach and Cross-Validation
+
+We just saw that it is possible to choose among a set of models of different sizes using $C_p$, BIC, and adjusted $R^2$. We will now consider how to do this using the validation set and cross-validation approaches.
+
+In order for these approaches to yield accurate estimates of the test error, we must use *only the training observations* to perform all aspects of model-fitting---including variable selection.  Therefore, the determination of which model of a
+given size is best must be made using *only the training observations*. This point is subtle but important.
+
+If the full data set is used to perform the best subset selection step, the validation set errors and cross-validation errors that we obtain will not be accurate estimates of the test error.
+
+In order to use the validation set approach, we begin by splitting the observations into a training set and a test set. We do this by creating a random vector, `train`, of elements equal to `TRUE` if the corresponding observation is in the training set, and `FALSE` otherwise.  The vector `test` has a `TRUE` if the observation is in the test set, and a `FALSE` otherwise. Note the `!` in the command to create `test` causes `TRUE`s to be switched to `FALSE`s and vice versa. We also set a random seed so that the user will obtain the same training set/test set split.
+
+```{r}
+set.seed(1)
+train <- sample(c(TRUE, FALSE), nrow(Hitters), replace = TRUE)
+test <- (!train)
+```
+
+Now, we apply `regsubsets()` to the training set in order to perform best subset selection.
+
+```{r}
+regfit.best <- regsubsets(Salary ~ ., data = Hitters[train, ], nvmax = 19)
+```
+
+Notice that we subset the `Hitters` data frame directly in the call in order to access only the training subset of the data, using the expression `Hitters[train, ]`. We now compute the validation set error for the best model of each model size. We first make a model matrix from the test data.
+
+```{r}
+test.mat <- model.matrix(Salary ~ ., data = Hitters[test, ])
+```
+
+The `model.matrix()` function is used in many regression packages for building an "X" matrix from data. Now we run a loop, and for each size `i`, we extract the coefficients from `regfit.best` for the best model of that size, multiply them into the appropriate columns of the test model matrix to form the predictions, and compute the test MSE.
+
+```{r}
+val.errors <- rep(NA, 19)
+for (i in 1:19) {
+ coefi <- coef(regfit.best, id = i)
+ pred <- test.mat[, names(coefi)] %*% coefi
+ val.errors[i] <- mean((Hitters$Salary[test] - pred)^2)
+}
+```
+
+We find that the best model is the one that contains seven variables.
+
+```{r}
+val.errors
+which.min(val.errors)
+coef(regfit.best, 7)
+```
+
+This was a little tedious, partly because there is no `predict()` method for `regsubsets()`.
+Since we will be using this function again, we can capture our steps above and write our own predict method.
+
+```{r}
+ predict.regsubsets <- function(object, newdata, id, ...) {
+  form <- as.formula(object$call[[2]])
+  mat <- model.matrix(form, newdata)
+  coefi <- coef(object, id = id)
+  xvars <- names(coefi)
+  mat[, xvars] %*% coefi
+ }
+```
+
+Our function pretty much mimics what we did above. The only complex part is how we extracted the formula used in the call to `regsubsets()`. We demonstrate how we use this function below, when we do cross-validation.
+
+Finally, we perform best subset selection on the full data set, and select the best seven-variable model. It is important that we make use of  the full data set in order to obtain more accurate coefficient estimates. Note that we perform best subset selection on the full data set and select the best seven-variable model, rather than simply using the variables that were obtained from the training set, because the best seven-variable model on the full data set may differ from the corresponding model on the training set.
+
+```{r}
+regfit.best <- regsubsets(Salary ~ ., data = Hitters, nvmax = 19)
+coef(regfit.best, 7)
+```
+
+In fact, we see that the best seven-variable model on the full data set has a different set of variables than the best seven-variable model on the training set.
+
+We now try to choose among the models of different sizes using cross-validation. This approach is somewhat involved, as we  must perform best subset selection *within each of the $k$ training sets*. Despite this, we see that with its clever subsetting syntax, `R` makes this job quite easy. First, we create a  vector that allocates each observation to one of $k=10$ folds, and we create a matrix in which we will store the results.
+
+```{r}
+k <- 10
+n <- nrow(Hitters)
+set.seed(1)
+folds <- sample(rep(1:k, length = n))
+cv.errors <- matrix(NA, k, 19, dimnames = list(NULL, paste(1:19)))
+```
+
+Now we write a for loop that performs cross-validation. In the $j$th fold, the elements of `folds` that equal `j` are in the test set, and the remainder are in the training set. We make our predictions for each model size (using our new `predict()` method), compute the test errors on the appropriate subset, and store them in the appropriate slot in the matrix `cv.errors`. Note that in the following code `R` will automatically use our `predict.regsubsets()` function when we call `predict()` because the `best.fit` object has class `regsubsets`.
+
+```{r}
+for (j in 1:k) {
+  best.fit <- regsubsets(Salary ~ ., data = Hitters[folds != j, ], nvmax = 19)
+  for (i in 1:19) {
+    pred <- predict(best.fit, Hitters[folds == j, ], id = i)
+    cv.errors[j, i] <- mean((Hitters$Salary[folds == j] - pred)^2)
+   }
+ }
+```
+
+This has given us a $10 \times 19$ matrix, of which the $(j,i)$th element  corresponds to the test MSE for the $j$th cross-validation fold for the best $i$-variable model. We use the `apply()` function to average over the columns of this matrix in order to obtain a vector for which the $i$th element is the cross-validation error for the $i$-variable model.
+
+```{r}
+mean.cv.errors <- apply(cv.errors, 2, mean)
+mean.cv.errors
+par(mfrow = c(1, 1))
+plot(mean.cv.errors, type = "b")
+```
+
+We see that cross-validation selects a 10-variable model. We now perform best subset selection on the full data set in order to obtain the 10-variable model.
+
+```{r}
+reg.best <- regsubsets(Salary ~ ., data = Hitters, nvmax = 19)
+coef(reg.best, 10)
+```
