@@ -6,7 +6,7 @@ Unsupervised Learning I - Clustering Analysis: https://personal.ntu.edu.sg/cspun
 Unsupervised Learning II - Dimension Reduction: https://personal.ntu.edu.sg/cspun/unsup-II.html
 
 
-Supervised Learning I - Supervised Learning I - KNN and Resampling: https://personal.ntu.edu.sg/cspun/sup-I.html
+Supervised Learning I - KNN and Resampling: https://personal.ntu.edu.sg/cspun/sup-I.html
 
 Supervised Learning II - Regression and Regularization: https://personal.ntu.edu.sg/cspun/sup-II.html
 
