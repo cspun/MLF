@@ -1,0 +1,571 @@
+---
+title: "Deep Learning II - Long Short-Term Memory"
+author: "Patrick PUN Chi Seng (NTU Sg)"
+output:
+  html_document:
+    self_contained: false
+    mathjax: "https://personal.ntu.edu.sg/cspun/mathjax/tex-svg.js"
+    df_print: paged
+header-includes:
+- \usepackage{fancyhdr}
+- \pagestyle{fancy}
+- \fancyfoot[C]{\thepage}
+- \fancypagestyle{plain}{\pagestyle{fancy}}
+- \fancyhead[L]{Machine Learning in Finance}
+- \fancyhead[R]{R Lab - Long Short-Term Memory}
+---
+
+
+```{r global_options, include=FALSE}
+library(knitr)
+knitr::opts_chunk$set(eval=TRUE)
+```
+
+## References
+
+Chapter 10.9.5 and 10.9.6 [ISLR2] An Introduction to Statistical Learning - with Applications in R (2nd Edition). Free access to download the book: https://www.statlearning.com/
+
+To see the help file of a function `funcname`, type `?funcname`.
+
+Getting `keras` up and running on your computer can be a challenge. The book website <www.statlearning.com> gives step-by-step instructions on how to achieve this. Guidance can also be found at <keras.rstudio.com>.
+
+The `torch` package has become available as an alternative to the `keras` package for deep learning. While `torch` does not require a `python` installation, the current implementation appears to be a fair bit slower than `keras`. We include the `torch` version of the implementation at the end of this lab.
+
+## LSTM with Keras
+In this section, we use the `keras` package, which interfaces to the `tensorflow` package which in turn links to efficient `python` code. This code is impressively fast, and the package is well-structured.
+```{r}
+# install.packages("keras3") # Uncomment to Run it for the first time
+# install.packages("reticulate") # Uncomment to Run it for the first time
+library(reticulate)
+use_condaenv("r-reticulate", required = TRUE)
+library(keras3)
+# install_keras(method = "conda", envname = "r-reticulate") # Uncomment to Run it for the first time
+```
+
+### IMDb Document Classification
+Here we fit a simple LSTM RNN for sentiment analysis with the `IMDb` movie-review data.
+
+Now we perform document classification on the `IMDB` dataset, which is available as part of the `keras` package. We limit the dictionary size to the 10,000  most frequently-used words and tokens.
+
+```{r chunk30}
+max_features <- 10000
+imdb <- dataset_imdb(num_words = max_features)
+c(c(x_train, y_train), c(x_test, y_test)) %<-% imdb
+```
+
+The third line is a shortcut for unpacking the list of lists. Each element of `x_train` is a vector of numbers between 0 and 9999 (the document), referring to the words found in the dictionary. The indices of the first 12 words are given below.
+
+```{r chunk31}
+x_train[[1]][1:12]
+```
+
+To see the words, we create a function, `decode_review()`, that provides a simple interface to the dictionary.
+
+```{r chunk32}
+word_index <- dataset_imdb_word_index()
+decode_review <- function(text, word_index) {
+  word <- names(word_index)
+  idx <- unlist(word_index, use.names = FALSE)
+  word <- c("<PAD>", "<START>", "<UNK>", "<UNUSED>", word)
+  idx <- c(0:3, idx + 3)
+  words <- word[match(text, idx, 2)]
+  paste(words, collapse = " ")
+}
+decode_review(x_train[[1]][1:12], word_index)
+```
+
+Next we write a function to "one-hot" encode each document in a list of documents, and return a binary matrix in sparse-matrix format.
+
+```{r chunk33}
+library(Matrix)
+one_hot <- function(sequences, dimension) {
+  seqlen <- sapply(sequences, length)
+  n <- length(seqlen)
+  rowind <- rep(1:n, seqlen)
+  colind <- unlist(sequences)
+  sparseMatrix(i = rowind, j = colind,
+      dims = c(n, dimension))
+}
+```
+
+To construct the sparse matrix, one supplies just the entries that are nonzero. In the last line we call the function `sparseMatrix()` and supply the row indices corresponding to each document and the column indices corresponding to the words in each document, since we omit the values they are taken to be all ones. Words that appear more than once in any given document still get recorded as a one.
+
+```{r chunk34}
+x_train_1h <- one_hot(x_train, 10000)
+x_test_1h <- one_hot(x_test, 10000)
+dim(x_train_1h)
+nnzero(x_train_1h) / (25000 * 10000)
+```
+
+Only 1.3% of the entries are nonzero, so this amounts to considerable savings in memory. We create a validation set of size 2,000, leaving 23,000 for training.
+
+```{r chunk35}
+set.seed(3)
+ival <- sample(seq(along = y_train), 2000)
+```
+
+We first calculate the lengths of the documents.
+
+```{r chunk40}
+wc <- sapply(x_train, length)
+median(wc)
+sum(wc <= 500) / length(wc)
+```
+
+We see that over 91% of the documents have fewer than 500 words. Our RNN requires all the document sequences to have the same length. We hence restrict the document lengths to the last $L=500$ words, and pad the beginning of the shorter ones with blanks.
+
+```{r chunk41}
+maxlen <- 500
+x_train <- pad_sequences(x_train, maxlen = maxlen)
+x_test <- pad_sequences(x_test, maxlen = maxlen)
+dim(x_train)
+dim(x_test)
+x_train[1, 490:500]
+```
+
+The last expression shows the last few words in the first document. At this stage, each of the 500 words in the document  is represented using an integer corresponding to the location of that word in the 10,000-word dictionary. The first layer of the RNN is an embedding layer of size 32, which will be learned during training. This layer one-hot encodes  each document as a matrix of dimension $500 \times 10,000$, and then maps these 10,000 dimensions down to 32.
+
+```{r chunk42}
+model <- keras_model_sequential() %>%
+  layer_embedding(input_dim = 10000, output_dim = 32) %>%
+  layer_lstm(units = 32) %>%
+  layer_dense(units = 1, activation = "sigmoid")
+```
+
+The second layer is an LSTM with 32 units, and the output layer is a single sigmoid for the binary classification task.
+
+The rest is now similar to other networks we have fit. We track the test performance as the network is fit, and see that it attains 87% accuracy.
+
+```{r chunk43}
+model %>% compile(optimizer = "rmsprop",
+    loss = "binary_crossentropy", metrics = c("acc"))
+#history <- model %>% fit(x_train, y_train, epochs = 10,
+history <- model %>% fit(x_train, y_train, epochs = 3,
+    batch_size = 128, validation_data = list(x_test, y_test))
+plot(history)
+predy <- predict(model, x_test) > 0.5
+mean(abs(y_test == as.numeric(predy)))
+```
+
+### Time Series Prediction
+We now show how to fit the models for time series prediction. We first set up the data, and standardize each of the variables.
+
+```{r chunk44}
+library(ISLR2)
+xdata <- data.matrix(
+    NYSE[, c("DJ_return", "log_volume","log_volatility")]
+  )
+istrain <- NYSE[, "train"]
+xdata <- scale(xdata)
+```
+
+The  variable `istrain` contains a `TRUE` for each year that  is in the training set, and a `FALSE` for each year in the test set.
+
+We first write functions to create lagged versions of the three time series.  We start with a function that takes as input a data matrix and a lag $L$, and returns a lagged version of the matrix. It simply inserts $L$ rows of `NA` at the top, and truncates the bottom.
+
+```{r chunk45}
+lagm <- function(x, k = 1) {
+  n <- nrow(x)
+  pad <- matrix(NA, k, ncol(x))
+  rbind(pad, x[1:(n - k), ])
+}
+```
+
+We now use this function to create a data frame with all the required lags, as well as the response variable.
+
+```{r chunk46}
+arframe <- data.frame(log_volume = xdata[, "log_volume"],
+   L1 = lagm(xdata, 1), L2 = lagm(xdata, 2),
+   L3 = lagm(xdata, 3), L4 = lagm(xdata, 4),
+   L5 = lagm(xdata, 5)
+ )
+```
+
+If we look at the first five rows of this frame, we will see some missing values in the lagged variables (due to the construction above). We remove these rows, and adjust `istrain` accordingly.
+
+```{r chunk47}
+arframe <- arframe[-(1:5), ]
+istrain <- istrain[-(1:5)]
+```
+
+We now fit the linear AR model to the training data using `lm()`, and predict on the test data.
+
+```{r chunk48}
+arfit <- lm(log_volume ~ ., data = arframe[istrain, ])
+arpred <- predict(arfit, arframe[!istrain, ])
+V0 <- var(arframe[!istrain, "log_volume"])
+1 - mean((arpred - arframe[!istrain, "log_volume"])^2) / V0
+```
+
+The last two lines compute the $R^2$ on the test data. We refit this model, including the factor variable `day_of_week`.
+
+```{r chunk49}
+arframed <- data.frame(day = NYSE[-(1:5), "day_of_week"], arframe)
+arfitd <- lm(log_volume ~ ., data = arframed[istrain, ])
+arpredd <- predict(arfitd, arframed[!istrain, ])
+1 - mean((arpredd - arframe[!istrain, "log_volume"])^2) / V0
+```
+
+
+To fit the RNN, we need to reshape these data, since it expects a sequence of $L=5$ feature vectors $X={X_\ell}_1^L$ for each observation. These are lagged versions of the time series going back $L$ time points.
+
+```{r chunk50}
+n <- nrow(arframe)
+xrnn <- data.matrix(arframe[, -1])
+xrnn <- array(xrnn, c(n, 3, 5))
+xrnn <- xrnn[,, 5:1]
+xrnn <- aperm(xrnn, c(1, 3, 2))
+dim(xrnn)
+```
+
+We have done this in four steps. The first simply extracts the $n\times 15$ matrix of lagged versions of the three predictor variables from `arframe`. The second converts this matrix to an $n\times 3\times 5$ array. We can do this by simply changing the dimension attribute, since the new array is filled column wise. The third step reverses the order of lagged variables, so that index 1 is furthest back in time, and index 5 closest. The final step rearranges the coordinates of the array (like a partial transpose) into the format that the RNN module in `keras` expects.
+
+Now we are ready to proceed with the RNN, which uses 12 hidden units.
+
+```{r chunk51}
+model <- keras_model_sequential(
+  layers = list(
+    layer_input(shape = c(5L, 3L)),
+    layer_simple_rnn(units = 12, dropout = 0.1, recurrent_dropout = 0.1),
+    layer_dense(units = 1)
+  )
+)
+
+model |> compile(optimizer = "rmsprop", loss = "mse")
+```
+
+We specify two forms of dropout for the units feeding into the  hidden layer. The first is for the input sequence feeding into this layer, and the second is for the previous hidden units feeding into the layer. The output layer has a single unit for the response.
+
+We fit the model in a similar fashion to previous networks. We supply the `fit` function with test data as validation data, so that when we monitor its progress and plot the history function we can see the progress on the test data. Of course we should not use this as a basis for early stopping, since then the test performance would be biased.
+
+```{r chunk52}
+history <- model %>% fit(
+    xrnn[istrain,, ], arframe[istrain, "log_volume"],
+#    batch_size = 64, epochs = 200,
+    batch_size = 64, epochs = 75,
+    validation_data =
+      list(xrnn[!istrain,, ], arframe[!istrain, "log_volume"])
+  )
+kpred <- predict(model, xrnn[!istrain,, ])
+1 - mean((kpred - arframe[!istrain, "log_volume"])^2) / V0
+```
+
+This model takes about one minute to train. We could replace the  `keras_model_sequential()` command above with the following command:
+
+```{r chunk53}
+model <- keras_model_sequential(
+  layers = list(
+    layer_input(shape = c(5L, 3L)),
+    layer_flatten(),
+    layer_dense(units = 1)
+  )
+)
+
+model |> compile(optimizer = "rmsprop", loss = "mse")
+```
+
+Here, `layer_flatten()` simply takes the input sequence and turns it into a long vector of predictors. This results in a linear AR model. To fit a nonlinear AR model, we could add in a hidden layer.
+
+However, since we already have the matrix of lagged variables from the AR model that we fit earlier using the `lm()` command, we can actually fit a nonlinear AR model without needing to perform flattening. We extract the model matrix `x` from `arframed`, which includes the `day_of_week` variable.
+
+```{r chunk54}
+x <- model.matrix(log_volume ~ . - 1, data = arframed)
+colnames(x)
+```
+
+The `-1` in the formula avoids the creation of a column of ones for the intercept. The variable `day_of_week` is a five-level factor (there are five trading days), and the `-1` results in  five rather than four dummy variables.
+
+The rest of the steps to fit a nonlinear AR model should by now be familiar.
+
+```{r chunk55}
+arnnd <- keras_model_sequential(
+  layers = list(
+    layer_input(shape = as.integer(ncol(x))),
+    layer_dense(units = 32, activation = "relu"),
+    layer_dropout(rate = 0.5),
+    layer_dense(units = 1)
+  )
+) |>
+  compile(optimizer = "rmsprop", loss = "mse")
+
+history <- arnnd |>
+  fit(
+    x[istrain, , drop = FALSE],
+    arframe[istrain, "log_volume"],
+    epochs = 30,
+    batch_size = 32,
+    validation_split = NULL,
+    validation_data = list(
+      x[!istrain, , drop = FALSE],
+      arframe[!istrain, "log_volume"]
+    ),
+    verbose = 2
+  )
+
+# plot training history
+plot(history)
+
+npred <- predict(arnnd, x[!istrain, , drop = FALSE]) |> as.numeric()
+1 - mean((arframe[!istrain, "log_volume"] - npred)^2) / V0
+```
+
+## LSTM with Torch
+
+### IMDb Document Classification
+
+Our RNN requires all the document sequences to have the same length. We hence restrict the document lengths to the last $L=500$ words, and pad the
+beginning of the shorter ones with blanks. We will use `torchdatasets` functionality for this.
+
+```{r}
+# install.packages("torch")
+# install.packages("luz")
+# install.packages("torchvision")
+# install.packages("torchdatasets")
+# install.packages("zeallot")
+library(torch)
+library(luz) # high-level interface for torch
+library(torchvision) # for datasets and image transformation
+library(torchdatasets) # for datasets we are going to use
+library(zeallot)
+torch_manual_seed(6805)
+```
+
+```{r}
+maxlen <- 500
+num_words <- 10000
+imdb_train <- imdb_dataset(root = ".", split = "train", num_words = num_words, maxlen = maxlen) # include argument "download = TRUE" for the first-time run
+imdb_test <- imdb_dataset(root = ".", split = "test", num_words = num_words, maxlen = maxlen) # include argument "download = TRUE" for the first-time run
+
+vocab <- c(rep(NA, imdb_train$index_from - 1), imdb_train$get_vocabulary())
+tail(names(vocab)[imdb_train[1]$x])
+```
+
+The last expression shows the last few words in the first document. At this stage, each of the 500 words in the document is represented using an integer corresponding to the location of that word in the 10,000-word dictionary. The first layer of the RNN is an embedding layer of size 32, which will be learned during  training. This layer one-hot encodes  each document as a matrix of dimension $500 \times 10,000$, and then maps these 10,000 dimensions down to 32.
+
+```{r}
+model <- nn_module(
+  initialize = function() {
+    self$embedding <- nn_embedding(10000 + 3, 32)
+    self$lstm <- nn_lstm(input_size = 32, hidden_size = 32, batch_first = TRUE)
+    self$dense <- nn_linear(32, 1)
+  },
+  forward = function(x) {
+    c(output, c(hn, cn)) %<-% (x %>% 
+      self$embedding() %>% 
+      self$lstm())
+    output[,-1,] %>%  # get the last output
+      self$dense() %>% 
+      torch_flatten(start_dim = 1)
+  }
+)
+```
+
+The second layer is an LSTM with 32 units, and the output layer is a single logit for the binary classification task. The rest is now similar to other networks we have fit. We track the test performance as the network is fit, and see that it attains 87% accuracy.
+
+```{r}
+model <- model %>% 
+  setup(
+    loss = nn_bce_with_logits_loss(),
+    optimizer = optim_rmsprop,
+    metrics = list(luz_metric_binary_accuracy_with_logits())
+  ) %>% 
+  set_opt_hparams(lr = 0.001)
+
+fitted <- model %>% fit(
+  imdb_train, 
+  epochs = 10,
+  dataloader_options = list(batch_size = 128),
+  valid_data = imdb_test
+)
+plot(fitted)
+predy <- torch_sigmoid(predict(fitted, imdb_test)) > 0.5
+evaluate(fitted, imdb_test, dataloader_options = list(batch_size = 512))
+```
+
+###  Time Series Prediction
+
+We now show how to fit the models for  time series prediction. We first set up the data, and standardize each of the variables.
+
+```{r}
+library(ISLR2)
+xdata <- data.matrix(
+ NYSE[, c("DJ_return", "log_volume","log_volatility")]
+ )
+istrain <- NYSE[, "train"]
+xdata <- scale(xdata)
+```
+
+The  variable `istrain` contains a `TRUE` for each year that is in the training set, and a `FALSE` for each year in the test set.
+
+We first write functions to create lagged versions of the three time series.  We start with a function that takes as input a data matrix and a lag $L$, and returns a lagged version of the matrix. It simply inserts $L$ rows of `NA` at the top, and truncates the bottom.
+
+```{r}
+lagm <- function(x, k = 1) {
+   n <- nrow(x)
+   pad <- matrix(NA, k, ncol(x))
+   rbind(pad, x[1:(n - k), ])
+}
+```
+
+We now use this function to create a data frame with all the required lags, as well as the response variable.
+
+```{r}
+arframe <- data.frame(log_volume = xdata[, "log_volume"],
+   L1 = lagm(xdata, 1), L2 = lagm(xdata, 2),
+   L3 = lagm(xdata, 3), L4 = lagm(xdata, 4),
+   L5 = lagm(xdata, 5)
+ )
+```
+
+If we look at the first five rows of this frame, we will see some missing values in the lagged variables (due to the construction above). We remove these rows, and adjust `istrain` accordingly.
+
+```{r}
+arframe <- arframe[-(1:5), ]
+istrain <- istrain[-(1:5)]
+```
+
+<!-- We now fit the linear AR model to the training data using `lm()`, and predict on the test data. -->
+
+<!-- ```{r} -->
+<!-- arfit <- lm(log_volume ~ ., data = arframe[istrain, ]) -->
+<!-- arpred <- predict(arfit, arframe[!istrain, ]) -->
+<!-- V0 <- var(arframe[!istrain, "log_volume"]) -->
+<!-- 1 - mean((arpred - arframe[!istrain, "log_volume"])^2) / V0 -->
+<!-- ``` -->
+
+<!-- The last two lines compute the $R^2$ on the test data, as defined in (3.17). -->
+
+<!-- We refit this model, including the factor variable `day_of_week`. -->
+
+<!-- ```{r} -->
+<!-- arframed <- -->
+<!--     data.frame(day = NYSE[-(1:5), "day_of_week"], arframe) -->
+<!-- arfitd <- lm(log_volume ~ ., data = arframed[istrain, ]) -->
+<!-- arpredd <- predict(arfitd, arframed[!istrain, ]) -->
+<!-- 1 - mean((arpredd - arframe[!istrain, "log_volume"])^2) / V0 -->
+<!-- ``` -->
+
+To fit the RNN, we need to reshape these data, since it expects a sequence of $L=5$ feature vectors $X=\{X_\ell\}_1^L$ for each observation. These are  lagged versions of the time series going back $L$ time points.
+
+```{r}
+n <- nrow(arframe)
+xrnn <- data.matrix(arframe[, -1])
+xrnn <- array(xrnn, c(n, 3, 5))
+xrnn <- xrnn[,, 5:1]
+xrnn <- aperm(xrnn, c(1, 3, 2))
+dim(xrnn)
+```
+
+We have done this in four steps. The first simply extracts the $n\times 15$ matrix of lagged versions of the three predictor variables from `arframe`. The second converts this matrix to a $n\times 3\times 5$ array. We can do this by simply changing the dimension attribute, since the new array is filled column wise. The third step reverses the order of lagged variables, so that index 1 is furthest back in time, and index 5 closest. The final step rearranges the coordinates of the array (like a partial transpose) into the format that the RNN module in `torch` expects.
+
+Now we are ready to proceed with the RNN, which uses 12 hidden units.
+
+```{r}
+model <- nn_module(
+  initialize = function() {
+    self$rnn <- nn_rnn(3, 12, batch_first = TRUE)
+    self$dense <- nn_linear(12, 1)
+    self$dropout <- nn_dropout(0.2)
+  },
+  forward = function(x) {
+    c(output, ...) %<-% (x %>% 
+      self$rnn())
+    output[,-1,] %>% 
+      self$dropout() %>% 
+      self$dense() %>% 
+      torch_flatten(start_dim = 1)
+  }
+)
+
+model <- model %>% 
+  setup(
+    optimizer = optim_rmsprop,
+    loss = nn_mse_loss()
+  ) %>% 
+  set_opt_hparams(lr = 0.001)
+
+```
+
+The output layer has a single unit for the response.
+
+We  fit the model in a similar fashion to previous networks. We supply the `fit` function with test data as validation data, so that when we monitor its progress and plot the history function we can see the progress on the test data. Of course we should not use this as a basis for early stopping, since then the test performance would be biased.
+
+```{r}
+fitted <- model %>% fit(
+    list(xrnn[istrain,, ], arframe[istrain, "log_volume"]),
+    epochs = 30, # = 200,
+    dataloader_options = list(batch_size = 64),
+    valid_data =
+      list(xrnn[!istrain,, ], arframe[!istrain, "log_volume"])
+  )
+kpred <- as.numeric(predict(fitted, xrnn[!istrain,, ]))
+1 - mean((kpred - arframe[!istrain, "log_volume"])^2) / V0
+```
+
+This model takes about one minute to train.
+
+We could replace the `nn_module()` command above with the following command:
+
+```{r}
+model <- nn_module(
+  initialize = function() {
+    self$dense <- nn_linear(15, 1)
+  },
+  forward = function(x) {
+    x %>% 
+      torch_flatten(start_dim = 2) %>% 
+      self$dense()
+  }
+)
+```
+
+Here, `torch_flatten()` simply takes the input sequence and turns it into a long vector of predictors. This results in a linear AR model. To fit a nonlinear AR model, we could add in a hidden layer.
+
+However, since we already have the matrix of lagged variables from the AR model that we fit earlier using the `lm()` command, we can actually fit a nonlinear AR model without needing to perform flattening. We extract the model matrix `x` from `arframed`, which includes the `day_of_week` variable.
+
+```{r}
+x <- model.matrix(log_volume ~ . - 1, data = arframed)
+colnames(x)
+```
+
+The `-1` in the formula avoids the creation of a column of ones for the intercept. The variable `day\_of\_week` is a five-level factor (there are five trading days), and the `-1` results in  five rather than four dummy variables.
+
+The rest of the steps to fit a nonlinear AR model should by now be familiar.
+
+```{r}
+arnnd <- nn_module(
+  initialize = function() {
+    self$dense <- nn_linear(20, 32)
+    self$dropout <- nn_dropout(0.5)
+    self$activation <- nn_relu()
+    self$output <- nn_linear(32, 1)
+    
+  },
+  forward = function(x) {
+    x %>% 
+      torch_flatten(start_dim = 2) %>% 
+      self$dense() %>% 
+      self$activation() %>% 
+      self$dropout() %>% 
+      self$output() %>% 
+      torch_flatten(start_dim = 1)
+  }
+)
+arnnd <- arnnd %>% 
+  setup(
+    optimizer = optim_rmsprop,
+    loss = nn_mse_loss()
+  ) %>% 
+  set_opt_hparams(lr = 0.001)
+
+fitted <- arnnd %>% fit(
+    list(x[istrain,], arframe[istrain, "log_volume"]),
+    epochs = 30, 
+    dataloader_options = list(batch_size = 64),
+    valid_data =
+      list(x[!istrain,], arframe[!istrain, "log_volume"])
+  )
+plot(fitted)
+npred <- as.numeric(predict(fitted, x[!istrain, ]))
+1 - mean((arframe[!istrain, "log_volume"] - npred)^2) / V0
+```

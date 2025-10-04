@@ -1,0 +1,714 @@
+---
+title: "Deep Learning I - Feedforward Neural Networks"
+author: "Patrick PUN Chi Seng (NTU Sg)"
+output:
+  html_document:
+    self_contained: false
+    mathjax: "https://personal.ntu.edu.sg/cspun/mathjax/tex-svg.js"
+    df_print: paged
+header-includes:
+- \usepackage{fancyhdr}
+- \pagestyle{fancy}
+- \fancyfoot[C]{\thepage}
+- \fancypagestyle{plain}{\pagestyle{fancy}}
+- \fancyhead[L]{Machine Learning in Finance}
+- \fancyhead[R]{R Lab - Feedforward Neural Networks}
+---
+
+
+```{r global_options, include=FALSE}
+library(knitr)
+knitr::opts_chunk$set(eval=TRUE)
+```
+
+## References
+
+Chapter 10.9.1 and 10.9.2 [ISLR2] An Introduction to Statistical Learning - with Applications in R (2nd Edition). Free access to download the book: https://www.statlearning.com/
+
+To see the help file of a function `funcname`, type `?funcname`.
+
+In this section, we use the `keras` package, which interfaces to the `tensorflow` package which in turn links to efficient `python` code. This code is impressively fast, and the package is well-structured. A good companion is the text *Deep Learning with R* (F. Chollet and J.J. Allaire, *Deep Learning with R*  (2018), Manning Publications.), and most of our code is adapted from there.
+
+Getting `keras` up and running on your computer can be a challenge. The book website <www.statlearning.com> gives step-by-step instructions on how to achieve this. Guidance can also be found at <keras.rstudio.com>.
+
+The `torch` package has become available as an alternative to the `keras` package for deep learning. While `torch` does not require a `python` installation, the current implementation appears to be a fair bit slower than `keras`. We include the `torch` version of the implementation at the end of this lab.
+
+## Feedforward Neural Networks with R Packages
+### Feedforward Neural Network (Regression) with *nnet*
+We'll start with the classic Boston housing data and build a simple one-hidden-layer network for regression using the `nnet` package.
+
+Load the data:
+```{r}
+library(MASS)
+data(Boston)
+# summary(Boston)
+```
+
+*Train/test split*. We randomly hold out 30\% of observations for testing:
+```{r}
+set.seed(1)
+train <- sample(nrow(Boston), 0.7 * nrow(Boston))
+X.train <- subset(Boston[train, ],select=-medv)
+y.train <- Boston$medv[train]
+X.test <- subset(Boston[-train, ],select=-medv)
+y.test <- Boston$medv[-train]
+```
+
+*Standardize features*. Neural nets train more reliably when inputs are on comparable scales. We center/scale using the *training* statistics and apply the same transformation to the test set:
+```{r}
+X.train.mean <- apply(X.train, 2, mean)
+X.train.sd <- apply(X.train, 2, sd)
+X.train.scaled<-scale(X.train,center=X.train.mean,scale=X.train.sd)
+X.test.scaled<-scale(X.test,center=X.train.mean,scale=X.train.sd)
+# Boston.train<-data.frame(X.train,medv=y.train)
+# Boston.test<-data.frame(X.test,medv=y.test)
+Boston.train.scaled<-data.frame(X.train.scaled,medv=y.train)
+Boston.test.scaled<-data.frame(X.test.scaled,medv=y.test)
+# X.train<-as.matrix(X.train)
+X.train.scaled<-as.matrix(X.train.scaled)
+# X.test<-as.matrix(X.test)
+X.test.scaled<-as.matrix(X.test.scaled)
+```
+
+`nnet` uses *sigmoid* activation in hidden layers. For regression, set `linout = TRUE` to make the *output* layer linear.
+```{r}
+# install.packages("nnet")
+library(nnet)
+Boston.nn <- nnet(medv~., data = Boston.train.scaled, size = 2, linout = TRUE)
+summary(Boston.nn)
+Boston.nn$value
+```
+
+Neural nets have *random weight initialization*. Different starts can land in different local minima. A simple strategy is to repeat training and keep the best (lowest objective value `value`):
+```{r}
+nn.rep <- function(rep, ...) {  # ... means the function takes any number of arguments
+   v.min <- Inf                 # initialize v.min
+   for (r in 1:rep) {           # repeat nnet
+      nn.temp <- nnet(...)      # fit the first nnet
+      v.temp <- nn.temp$value   # store the cost
+      if (v.temp < v.min) {     # choose better weights
+         v.min <- v.temp
+         nn.min <- nn.temp
+      }
+   }
+   return(nn.min)
+}
+```
+
+Run the repeated fit and inspect the best model:
+```{r}
+set.seed(1)
+Boston.nn.rep <- nn.rep(rep = 30, medv ~ ., data = Boston.train.scaled, 
+                        size = 2, linout = TRUE, trace = FALSE)
+summary(Boston.nn.rep)
+Boston.nn.rep$value
+```
+
+Test error (MSE):
+```{r}
+Boston.nn.pred <- predict(Boston.nn.rep,Boston.test.scaled)
+mean((Boston.nn.pred-y.test)^2)
+```
+
+Notes.
+- `size` controls hidden units; try larger values (e.g., 5–10) and add `decay` (weight decay/L2) to regularize.
+
+- Features should be numeric; factors should be one-hot encoded (here `Boston` is already numeric).
+
+### Feedforward Neural Network (Classification) with *nnet*
+We now switch to *classification* on the `iris` dataset. The setup mirrors the regression case, but we *do not* use `linout`.
+
+*Split the data*:
+```{r}
+data(iris)
+# summary(iris)
+set.seed(1)
+train <- sample(nrow(iris), 0.7 * nrow(iris))
+X.train <- subset(iris[train, ],select=-Species)
+y.train <- iris$Species[train]
+X.test <- subset(iris[-train, ],select=-Species)
+y.test <- iris$Species[-train]
+```
+
+*Standardize features* using training statistics:
+```{r}
+X.train.mean <- apply(X.train, 2, mean)
+X.train.sd <- apply(X.train, 2, sd)
+X.train.scaled<-scale(X.train,center=X.train.mean,scale=X.train.sd)
+X.test.scaled<-scale(X.test,center=X.train.mean,scale=X.train.sd)
+# iris.train<-data.frame(X.train,Species=y.train)
+# iris.test<-data.frame(X.test,Species=y.test)
+iris.train.scaled<-data.frame(X.train.scaled,Species=y.train)
+iris.test.scaled<-data.frame(X.test.scaled,Species=y.test)
+# X.train<-as.matrix(X.train)
+X.train.scaled<-as.matrix(X.train.scaled)
+# X.test<-as.matrix(X.test)
+X.test.scaled<-as.matrix(X.test.scaled)
+```
+
+*Repeated training* (same helper as above) to pick a good initialization. For classification, keep `linout = FALSE` (the default), which produces class probabilities:
+```{r}
+set.seed(1)
+iris.nn.rep <- nn.rep(rep = 30, Species ~ ., data = iris.train.scaled, size = 2, trace = FALSE, linout=FALSE)
+summary(iris.nn.rep)
+```
+
+*Evaluate classification error*:
+```{r}
+# iris.nn.pred <- predict(iris.nn.rep, iris.test.scaled, type = "raw") # Predicted "Probability" for each class
+iris.nn.pred <- predict(iris.nn.rep, iris.test.scaled, type = "class")
+table(iris.nn.pred, y.test)
+mean(iris.nn.pred != y.test)
+```
+
+*Tips*.
+
+- Increase `size` (hidden units) and consider `decay` to reduce overfitting.
+
+- For imbalanced data, examine per-class error or use confusion matrix metrics (precision/recall).
+
+### Feedforward Neural Network with *neuralnet*
+If you want *multiple hidden layers* or more control over activation/error functions, `neuralnet` is a friendly option.
+```{r}
+# install.packages("neuralnet")
+library(neuralnet)
+set.seed(1)
+iris.neunet.rep <- neuralnet(Species ~ ., data = iris.train.scaled,
+                         hidden = c(5,3), # a vector of numbers of neurons in the hidden layers
+                         rep = 30, # number of repetitions
+                         act.fct = 'logistic', # specify the activation function between 'logistic' and 'tanh'
+                         err.fct = 'ce', # specify the error function between 'sse' (regression)
+                                         # and 'ce' (classification)
+                         linear.output = FALSE)
+(bestrep<-which.min(iris.neunet.rep$result.matrix["error",]))
+iris.neunet.rep$weights[[bestrep]]
+plot(iris.neunet.rep,rep=bestrep) # Alternatively, plot(iris.neunet.rep,rep="best")
+```
+
+*Evaluate on the test set*. `predict()` returns class probabilities; convert to class labels by argmax and align factor levels:
+```{r}
+iris.neunet.pred.prob <- predict(iris.neunet.rep, iris.test.scaled, rep=bestrep) # Predicted "Probability" for each class
+iris.neunet.pred <- as.factor(max.col(iris.neunet.pred.prob))
+levels(iris.neunet.pred)<-levels(iris.train.scaled$Species)
+table(iris.neunet.pred, y.test)
+mean(iris.neunet.pred != y.test)
+```
+
+*Remarks*.
+
+- `hidden` accepts a vector for deep networks (e.g., `c(10, 10, 5)`).
+
+- For regression with `neuralnet`, switch to `err.fct = "sse"` and `linear.output = TRUE`.
+
+- Visualization via `plot()` helps students connect the algebra to the network topology.
+
+## Feedforward Neural Networks with Python+Keras
+
+### A Single Layer Network on the Hitters Data
+We set up the data, and separate out a training and test set.
+
+```{r chunk1}
+library(ISLR2)
+Gitters <- na.omit(Hitters)
+n <- nrow(Gitters)
+set.seed(6805)
+ntest <- trunc(n /3)
+testid <- sample(1:n, ntest)
+```
+
+The linear model should be familiar, but we present it anyway.
+
+```{r chunk2}
+lfit <- lm(Salary ~ ., data = Gitters[-testid, ])
+lpred <- predict(lfit, Gitters[testid, ])
+with(Gitters[testid, ], mean(abs(lpred - Salary)))
+```
+
+Notice the use of the `with()` command: the first argument is a dataframe, and the second an expression that can refer to elements of the dataframe by name. In this instance the dataframe corresponds to the test data and the expression computes the mean absolute prediction error on this data.
+
+Next we fit the lasso using `glmnet`. Since this package does not use formulas, we create `x` and `y` first.
+
+```{r chunk3}
+x <- scale(model.matrix(Salary ~ . - 1, data = Gitters))
+y <- Gitters$Salary
+```
+
+The first line makes a call to `model.matrix()`,  which produces the same matrix that was used by `lm()` (the `-1`  omits the intercept). This function automatically converts factors to dummy variables. The `scale()` function standardizes the matrix so each column has mean zero and variance one.
+
+```{r chunk4}
+library(glmnet)
+cvfit <- cv.glmnet(x[-testid, ], y[-testid], type.measure = "mae")
+cpred <- predict(cvfit, x[testid, ], s = "lambda.min")
+mean(abs(y[testid] - cpred))
+```
+
+To fit the neural network, we first set up a model structure that describes the network.
+
+```{r chunk5}
+# install.packages("keras3") # Uncomment to Run it for the first time
+# install.packages("reticulate") # Uncomment to Run it for the first time
+library(reticulate)
+use_condaenv("r-reticulate", required = TRUE)
+library(keras3)
+# install_keras(method = "conda", envname = "r-reticulate") # Uncomment to Run it for the first time
+modnn <- keras_model_sequential() |>
+  layer_dense(units = 50, activation = "relu", input_shape = ncol(x)) |>
+  layer_dropout(rate = 0.4) |>
+  layer_dense(units = 1)
+```
+
+We have created a vanilla model object called `modnn`, and have added details about the successive layers in a sequential manner, using the function `keras_model_sequential()`. The *pipe* operator `\%>\%` passes the previous term as the first argument to the next function, and returns the result. It allows us to specify the layers of a neural network in a readable form.
+
+We illustrate the use of the pipe operator on a simple example. Earlier, we created `x` using the command
+
+```{r chunk6}
+x <- scale(model.matrix(Salary ~ . - 1, data = Gitters))
+```
+
+We first make a matrix, and then we center each of the variables. Compound expressions like this can be difficult to parse. We could have obtained the same result using the pipe operator:
+
+```{r chunk7}
+x <- model.matrix(Salary ~ . - 1, data = Gitters) |> scale()
+```
+
+Using the pipe operator makes it easier to follow the sequence of operations.
+
+We now return to our neural network. The object `modnn` has a single hidden layer with 50 hidden units, and a ReLU activation function. It then has a dropout layer, in which a random 40\% of the 50 activations from the previous layer are set to zero during each iteration of the stochastic gradient descent algorithm. Finally, the output layer has just one unit with no activation function, indicating that the model provides a single quantitative output.
+
+Next we add details to  `modnn` that control the fitting algorithm. Here we have simply followed the examples given in the Keras book. We minimize squared-error loss. The algorithm tracks the mean absolute error on the training data, and on validation data if it is supplied.
+
+```{r chunk8}
+modnn |> compile(loss = "mse",
+    optimizer = optimizer_rmsprop(),
+    metrics = list("mean_absolute_error")
+   )
+```
+
+In the previous line, the pipe operator passes `modnn` as the first argument to `compile()`. The `compile()` function does not actually change the `R` object `modnn`, but it does communicate these specifications to the corresponding `python` instance of this model that has been created along the way.
+
+Now we fit the model. We supply the training data and two fitting parameters, `epochs` and `batch_size`. Using 32 for the latter means that at each step of SGD, the algorithm randomly selects 32 training observations for the computation of the gradient. An epoch amounts to the number of SGD steps required to process $n$ observations. Since the training set has $n=176$, an epoch is 176/32=5.5 SGD steps. The `fit()` function has an argument `validation_data`; these data are not used in the fitting, but can be used to track the progress of the model (in this case reporting the mean absolute error). Here we actually supply the test data so we can see the mean absolute error of both the training data and test data as the epochs proceed. To see more options for fitting, use `?fit.keras.engine.training.Model`.
+
+```{r chunk9}
+history <- modnn |> fit(
+#    x[-testid, ], y[-testid], epochs = 1500, batch_size = 32,
+    x[-testid, ],
+    y[-testid],
+    epochs = 600,
+    batch_size = 32,
+    validation_data = list(x[testid, ], y[testid])
+  )
+```
+
+*(Here and elsewhere we have reduced the number of epochs to make runtimes manageable; users can of course change back)*
+
+We can plot the `history` to display the mean absolute error for the training and test data. For the best aesthetics, install the `ggplot2` package before calling the  `plot()` function. If you have not installed `ggplot2`, then the code below will still run, but the plot will be less attractive.
+
+```{r chunk10}
+plot(history)
+```
+
+It is worth noting that if you run the `fit()` command a second time in the same \text{R} session, then the fitting process will pick up where it left off. Try re-running the `fit()` command, and then the `plot()` command, to see!
+
+Finally, we predict from the final model, and evaluate its performance on the test data. Due to the use of SGD, the results vary slightly with each fit. Unfortunately the `set.seed()` function does not ensure identical results (since the fitting is done in `python`), so your results will differ slightly.
+
+```{r chunk11}
+npred <- predict(modnn, x[testid, ])
+mean(abs(y[testid] - npred))
+```
+
+
+## A Multilayer Network on the MNIST Digit Data
+The `keras` package comes with a number of example datasets, including the `MNIST` digit data. Our first step is to load the `MNIST` data. The `dataset_mnist()` function is provided for this purpose.
+
+```{r chunk12}
+mnist <- dataset_mnist()
+x_train <- mnist$train$x
+g_train <- mnist$train$y
+x_test <- mnist$test$x
+g_test <- mnist$test$y
+dim(x_train)
+dim(x_test)
+```
+
+There are 60,000 images in the training data and 10,000 in the test data. The images are $28\times 28$, and stored as a three-dimensional array, so we need to reshape them into a matrix.  Also, we need to "one-hot" encode the class label. Luckily `keras` has a lot of built-in functions that do this for us.
+
+```{r chunk13}
+x_train <- array_reshape(x_train, c(nrow(x_train), 784))
+x_test <- array_reshape(x_test, c(nrow(x_test), 784))
+y_train <- to_categorical(g_train, 10)
+y_test <- to_categorical(g_test, 10)
+```
+
+Neural networks are somewhat sensitive to the scale of the inputs. For example, ridge and lasso regularization are affected by scaling.  Here the inputs are eight-bit grayscale values between 0 and 255, so we rescale to the unit interval. (Eight bits means $2^8$, which equals 256. Since the convention
+is to start at 0, the possible values  range from 0 to 255.)
+
+```{r chunk14}
+x_train <- x_train / 255
+x_test <- x_test / 255
+```
+
+Now we are ready to fit our neural network.
+
+```{r chunk15}
+modelnn <- keras_model_sequential()
+modelnn |>
+  layer_dense(units = 256, activation = "relu",
+       input_shape = c(784)) |>
+  layer_dropout(rate = 0.4) |>
+  layer_dense(units = 128, activation = "relu") |>
+  layer_dropout(rate = 0.3) |>
+  layer_dense(units = 10, activation = "softmax")
+```
+
+The first layer goes from  $28\times28=784$ input units to a hidden layer of $256$ units, which uses the ReLU activation function. This is specified by a call to `layer_dense()`, which takes as input a `modelnn` object, and returns a modified `modelnn` object. This is then piped through `layer_dropout()` to perform dropout regularization. The second hidden layer comes next, with $128$ hidden units, followed by a  dropout layer. The final layer is the output layer, with activation `"softmax"` (10.13) for the 10-class classification problem, which defines the map from the second hidden layer to class probabilities. Finally, we use `summary()` to summarize the model, and to make sure we got it all right.
+
+```{r chunk16}
+summary(modelnn)
+```
+
+The parameters for each layer include a bias term, which results in a parameter count of 235,146. For example, the first hidden layer involves $(784+1)\times256=200,960$ parameters.
+
+Notice that the layer names such as `dropout_1` and `dense_2` have subscripts. These may appear somewhat random; in fact, if you fit the same model again, these will change. They are of no consequence: they vary because the model specification code is run in `python`, and these subscripts are incremented every time `keras_model_sequential()` is called.
+
+Next, we add details to the model to specify the fitting algorithm. We fit the model by minimizing the cross-entropy function.
+
+```{r chunk17}
+modelnn |> compile(loss = "categorical_crossentropy",
+    optimizer = optimizer_rmsprop(), metrics = c("accuracy")
+  )
+```
+
+Now we are ready to go. The final step is to supply training data, and fit the model.
+
+```{r chunk18}
+system.time(
+  history <- modelnn |>
+#     fit(x_train, y_train, epochs = 30, batch_size = 128,
+      fit(x_train, y_train, epochs = 15, batch_size = 128,
+        validation_split = 0.2)
+)
+plot(history, smooth = FALSE)
+```
+
+We have suppressed the output here, which is a progress report on the fitting of the model, grouped by epoch. This is very useful, since on large datasets fitting can take time. Here we specified a validation split of 20\%, so the training is actually performed on 80\% of the 60,000 observations in the training set. This is an alternative to actually supplying validation data. See `?fit.keras.engine.training.Model` for all the optional fitting arguments. SGDuses batches of 128 observations in computing the gradient, and doing the arithmetic, we see that an epoch corresponds to 375 gradient steps.
+
+To obtain the test error, we first write a simple function `accuracy()` that compares predicted and true class labels, and then use it to evaluate our predictions.
+
+```{r chunk19}
+tf <- reticulate::import("tensorflow")
+accuracy <- function(pred, truth)
+  mean(drop(as.numeric(pred)) == drop(truth))
+modelnn |> predict(x_test) |> tf$math$argmax() |> accuracy(g_test)
+```
+
+Although packages such as `glmnet` can handle multiclass logistic regression, they are quite slow on this large dataset. It is much faster and quite easy to fit such a model using the `keras` software. We just have an input layer and output layer, and omit the hidden layers!
+
+```{r chunk20}
+modellr <- keras_model_sequential() |>
+  layer_dense(input_shape = 784, units = 10,
+       activation = "softmax")
+summary(modellr)
+```
+
+We fit the model just as before.
+
+```{r chunk21}
+modellr |> compile(loss = "categorical_crossentropy",
+     optimizer = optimizer_rmsprop(), metrics = c("accuracy"))
+modellr |> fit(x_train, y_train, epochs = 30,
+      batch_size = 128, validation_split = 0.2)
+modellr |> predict(x_test) |> tf$math$argmax() |> accuracy(g_test)
+```
+
+## Feedforward Neural Networks with Torch
+
+In this section, we use the `luz` package, which interfaces to the `torch` package which in turn links to efficient `C++` code in the LibTorch library. 
+
+An advantage over the previous `keras` implementation is that this version does not require a separate `python` installation.
+
+### Single Layer Network on Hitters Data
+
+We set up the data, and separate out a training and
+test set.
+
+```{r}
+library(ISLR2)
+Gitters <- na.omit(Hitters)
+n <- nrow(Gitters)
+set.seed(6805)
+ntest <- trunc(n/3)
+testid <- sample(1:n, ntest)
+```
+
+To fit the neural network, we first set up a model structure that describes the network.
+
+```{r}
+# install.packages("torch")
+# install.packages("luz")
+# install.packages("torchvision")
+# install.packages("torchdatasets")
+# install.packages("zeallot")
+library(torch)
+library(luz) # high-level interface for torch
+library(torchvision) # for datasets and image transformation
+library(torchdatasets) # for datasets we are going to use
+library(zeallot)
+torch_manual_seed(6805)
+```
+
+```{r}
+modnn <- nn_module(
+  initialize = function(input_size) {
+    self$hidden <- nn_linear(input_size, 50)
+    self$activation <- nn_relu()
+    self$dropout <- nn_dropout(0.4)
+    self$output <- nn_linear(50, 1)
+  },
+  forward = function(x) {
+    x %>% 
+      self$hidden() %>% 
+      self$activation() %>% 
+      self$dropout() %>% 
+      self$output()
+  }
+)
+```
+
+We have created a model called `modnn` by defining the `initialize()` and `forward()` functions and passing them to the `nn_module()` function. The `initialize()` function is responsible for initializing the submodules that are used by the model. In the `forward` method we implement what happens when the model is called on input data. In this case we use the layers we defined in `initialize()` in that specific order.
+
+`self` is a list-like special object that is used to share information between the methods of the `nn_module()`. When you assign an object to `self` in `initialize()`, it can then be accessed by `forward()`.
+
+The `pipe` operator `%>%` passes the previous term as the first argument to the next function, and returns the result.
+
+We illustrate the use of the pipe operator on a simple example. We first make a matrix, and then we center and scale each of the variables. Compound expressions like this can be difficult to parse. We could have obtained the same result using the pipe operator:
+
+```{r}
+x <- model.matrix(Salary ~ . - 1, data = Gitters) %>% scale()
+# Equivalent to x <- scale(model.matrix(Salary ~ . - 1, data = Gitters))
+```
+
+Using the pipe operator makes it easier to follow the sequence of operations.
+
+We now return to our neural network. The object `modnn` has a single hidden layer with 50 hidden units, and a ReLU activation function. It then has a dropout layer, in which a random 40% of the 50 activations from the previous layer are set to zero during each iteration of the stochastic gradient descent algorithm. Finally, the output layer has just one unit with no activation function, indicating that the model provides a single quantitative output.
+
+Next we add details to  `modnn` that control the fitting algorithm. We minimize squared-error loss. The algorithm tracks the mean absolute error on the training data, and on validation data if it is supplied.
+
+```{r}
+modnn <- modnn %>% 
+  setup(
+    loss = nn_mse_loss(),
+    optimizer = optim_rmsprop,
+    metrics = list(luz_metric_mae())
+  ) %>% 
+  set_hparams(input_size = ncol(x))
+```
+
+In the previous line, the pipe operator passes `modnn` as the first argument to `setup()`.The `setup()` function embeds these specification into a new model object. We also use `set_hparam()` to specify the arguments that should be passed to the  `initialize()` method of `modnn`. 
+
+Now we fit the model. We supply the training data and the number of `epochs`. By default, at each step of SGD, the algorithm randomly selects 32 training observations for the computation of the gradient. An epoch amounts to the number of SGD steps required to process $n$ observations. Since the training set has $n=176$, an epoch is 176/32=5.5 SGD steps. The `fit()` function has an argument `valid_data`; these data are not used in the fitting, but can be used to track the progress of the model (in this case reporting mean absolute error). Here we actually supply the test data so we can see mean absolute error of both the training data and test data as the epochs proceed. To see more options for fitting, use `?fit.luz_module_generator`.
+
+```{r}
+fitted <- modnn %>% 
+  fit(
+    data = list(x[-testid, ], matrix(y[-testid], ncol = 1)),
+    valid_data = list(x[testid, ], matrix(y[testid], ncol = 1)),
+    epochs = 20 # 50
+  )
+```
+*(Here and elsewhere we have reduced the number of epochs to make runtimes manageable; users can of course change back)*
+
+We can plot the `fitted` model to display the mean absolute error for the training and test data. 
+
+```{r}
+plot(fitted)
+```
+
+Finally, we predict from the final model, and evaluate its performance on the test data. Due to the use of SGD, the results vary slightly with each fit.
+
+```{r}
+npred <- predict(fitted, x[testid, ])
+mean(abs(y[testid] - as.matrix(npred)))
+```
+
+We had to convert the `npred` object to a matrix, since the current predict method returns an object of class `torch_tensor`.
+
+```{r}
+class(npred)
+```
+
+### Multilayer Network on the MNIST Digit Data
+
+The `torchvision` package comes with a number of example datasets, including the `MNIST` digit data. Our first step is to load the `MNIST` data. The `mnist_dataset()` function is provided for this purpose.
+
+This functions returns a `dataset()`, a data structure implemented in `torch` allowing one to represent any dataset without making assumptions on where the data is stored and how the data is organized. Usually, torch datasets also implement the data acquisition process, like downloading and caching some files on disk.
+
+```{r}
+train_ds <- mnist_dataset(root = ".", train = TRUE, download = TRUE)
+test_ds <- mnist_dataset(root = ".", train = FALSE, download = TRUE)
+
+str(train_ds[1])
+str(test_ds[2])
+
+length(train_ds)
+length(test_ds)
+```
+
+There are 60,000 images in the training data and 10,000 in the test data. The images are $28\times 28$, and stored as matrix of pixels. We need to transform each one into a vector.
+
+Neural networks are somewhat sensitive to the scale of the inputs. For example, ridge and lasso regularization are affected by scaling. Here the inputs are eight-bit grayscale values between 0 and 255, so we rescale to the unit interval. (Note: eight bits means $2^8$, which equals 256. Since the convention is to start at 0, the possible values  range from 0 to 255.)
+
+To apply these transformations we will re-define `train_ds` and `test_ds`, now passing a the `transform` argument that will apply a transformation to each of the image inputs.
+
+```{r}
+transform <- function(x) {
+  x %>% 
+    torch_tensor() %>% 
+    torch_flatten() %>% 
+    torch_div(255)
+}
+train_ds <- mnist_dataset(
+  root = ".", 
+  train = TRUE, 
+  download = TRUE, 
+  transform = transform
+)
+test_ds <- mnist_dataset(
+  root = ".", 
+  train = FALSE, 
+  download = TRUE,
+  transform = transform
+)
+```
+
+Now we are ready to fit our neural network.
+
+```{r}
+modelnn <- nn_module(
+  initialize = function() {
+    self$linear1 <- nn_linear(in_features = 28*28, out_features = 256)
+    self$linear2 <- nn_linear(in_features = 256, out_features = 128)
+    self$linear3 <- nn_linear(in_features = 128, out_features = 10)
+    
+    self$drop1 <- nn_dropout(p = 0.4)
+    self$drop2 <- nn_dropout(p = 0.3)
+    
+    self$activation <- nn_relu()
+  },
+  forward = function(x) {
+    x %>% 
+      
+      self$linear1() %>% 
+      self$activation() %>% 
+      self$drop1() %>% 
+      
+      self$linear2() %>% 
+      self$activation() %>% 
+      self$drop2() %>% 
+      
+      self$linear3()
+  }
+)
+```
+
+We define the `intialize()` and `forward()` methods of the `nn_module()`.
+
+In `initialize` we specify all layers that are used in the model. For example, `nn_linear(784, 256)` defines a dense layer that goes from $28\times28=784$ input units to a hidden layer of 256 units. The model will have 3 of them, each one decreasing the number of output units. The last will have 10 output units, because each unit will be associated to a different class, and we have a 10-class classification problem. We also defined dropout layers using `nn_dropout()`. These will be used to perform dropout regularization. Finally we define the activation layer using `nn_relu()`.
+
+In `forward()` we define the order in which these layers are called. We call them in blocks like (linear, activation, dropout), except for the last layer that does not use an activation function or dropout.
+
+Finally, we use `print` to summarize the model, and to make sure we got it all right.
+
+```{r}
+print(modelnn())
+```
+
+The parameters for each layer include a bias term, which results in a parameter count of 235,146. For example, the first hidden layer involves $(784+1)\times 256=200,960$ parameters.
+
+Next, we add details to the model to specify the fitting algorithm. We fit the model by minimizing the cross-entropy function.
+
+Notice that in `torch` the cross entropy function is defined in terms of the logits, for numerical stability and memory efficiency reasons. It does not require the target to be one-hot encoded.
+
+```{r}
+modelnn <- modelnn %>% 
+  setup(
+    loss = nn_cross_entropy_loss(),
+    optimizer = optim_rmsprop, 
+    metrics = list(luz_metric_accuracy())
+  )
+```
+
+Now we are ready to go. The final step is to supply training data, and fit the model.
+
+```{r}
+system.time(
+   fitted <- modelnn %>%
+      fit(
+        data = train_ds, 
+        epochs = 10, #15, 
+        valid_data = 0.2,
+        dataloader_options = list(batch_size = 256),
+        verbose = TRUE
+      )
+ )
+plot(fitted)
+```
+
+We have suppressed the output here. The output is a progress report on the fitting of the model, grouped by epoch. This is very useful, since on large datasets fitting can take time. Here we specified a validation split of 20%, so training is actually performed on 80% of the 60,000 observations in the training set. This is an alternative to actually supplying validation data. See `?fit.luz_module_generator` for all the optional fitting arguments. SGD uses batches of 256 observations in computing the gradient, and doing the arithmetic, we see that an epoch corresponds to 188 gradient steps.
+
+To obtain the test error, we first write a simple function `accuracy()` that compares predicted and true class labels, and then use it to evaluate our predictions.
+
+```{r}
+accuracy <- function(pred, truth) {
+   mean(pred == truth) }
+
+# gets the true classes from all observations in test_ds.
+truth <- sapply(seq_along(test_ds), function(x) test_ds[x][[2]])
+
+fitted %>% 
+  predict(test_ds) %>% 
+  torch_argmax(dim = 2) %>%  # the predicted class is the one with higher 'logit'.
+  as_array() %>% # we convert to an R object
+  accuracy(truth)
+```
+
+Although packages such as `glmnet` can handle multiclass logistic regression, they are quite slow on this large dataset. It is much faster and quite easy to fit such a model using the `luz` software. We just have an input layer and output layer, and omit the hidden layers!
+
+```{r}
+modellr <- nn_module(
+  initialize = function() {
+    self$linear <- nn_linear(784, 10)
+  },
+  forward = function(x) {
+    self$linear(x)
+  }
+)
+print(modellr())
+```
+
+We fit the model just as before.
+
+```{r}
+fit_modellr <- modellr %>% 
+  setup(
+    loss = nn_cross_entropy_loss(),
+    optimizer = optim_rmsprop,
+    metrics = list(luz_metric_accuracy())
+  ) %>% 
+  fit(
+    data = train_ds, 
+    epochs = 5,
+    valid_data = 0.2,
+    dataloader_options = list(batch_size = 128)
+  )
+
+fit_modellr %>% 
+  predict(test_ds) %>% 
+  torch_argmax(dim = 2) %>%  # the predicted class is the one with higher 'logit'.
+  as_array() %>% # we convert to an R object
+  accuracy(truth)
+
+
+# alternatively one can use the `evaluate` function to get the results
+# on the test_ds
+evaluate(fit_modellr, test_ds)
+```

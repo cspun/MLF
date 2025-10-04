@@ -1,0 +1,675 @@
+---
+title: "Deep Learning III - Convolutional Neural Networks"
+author: "Patrick PUN Chi Seng (NTU Sg)"
+output:
+  html_document:
+    self_contained: false
+    mathjax: "https://personal.ntu.edu.sg/cspun/mathjax/tex-svg.js"
+    df_print: paged
+header-includes:
+- \usepackage{fancyhdr}
+- \pagestyle{fancy}
+- \fancyfoot[C]{\thepage}
+- \fancypagestyle{plain}{\pagestyle{fancy}}
+- \fancyhead[L]{Machine Learning in Finance}
+- \fancyhead[R]{R Lab - Convolutional Neural Networks}
+---
+
+
+```{r global_options, include=FALSE}
+library(knitr)
+knitr::opts_chunk$set(eval=TRUE)
+```
+
+## References
+
+Chapter 10.9.3 and 10.9.4 [ISLR2] An Introduction to Statistical Learning - with Applications in R (2nd Edition). Free access to download the book: https://www.statlearning.com/
+
+To see the help file of a function `funcname`, type `?funcname`.
+
+Getting `keras` up and running on your computer can be a challenge. The book website <www.statlearning.com> gives step-by-step instructions on how to achieve this. Guidance can also be found at <keras.rstudio.com>.
+
+The `torch` package has become available as an alternative to the `keras` package for deep learning. While `torch` does not require a `python` installation, the current implementation appears to be a fair bit slower than `keras`. We include the `torch` version of the implementation at the end of this lab.
+
+## Convolutional Neural Networks with Keras
+In this section, we use the `keras` package, which interfaces to the `tensorflow` package which in turn links to efficient `python` code. This code is impressively fast, and the package is well-structured.
+```{r}
+# install.packages("keras3") # Uncomment to Run it for the first time
+# install.packages("reticulate") # Uncomment to Run it for the first time
+library(reticulate)
+use_condaenv("r-reticulate", required = TRUE)
+library(keras3)
+# install_keras(method = "conda", envname = "r-reticulate") # Uncomment to Run it for the first time
+```
+
+In this section we fit a CNN to the `CIFAR` data, which is available in the `keras` package. It is arranged in a similar fashion as the `MNIST` data.
+
+```{r chunk22}
+cifar100 <- dataset_cifar100()
+names(cifar100)
+x_train <- cifar100$train$x
+g_train <- cifar100$train$y
+x_test <- cifar100$test$x
+g_test <- cifar100$test$y
+dim(x_train)
+range(x_train[1,,,1])
+```
+
+The array of 50,000 training images has four dimensions: each three-color image is represented as a set of three channels, each of which consists of $32\times 32$ eight-bit pixels. We standardize as we did for the digits, but keep the array structure. We one-hot encode the response factors  to produce a 100-column binary matrix.
+
+```{r chunk23}
+x_train <- x_train / 255
+x_test <- x_test / 255
+y_train <- to_categorical(g_train, 100)
+dim(y_train)
+```
+
+Before we start, we look at some of the training images using  the `jpeg` package.
+
+```{r chunk24}
+library(jpeg)
+par(mar = c(0, 0, 0, 0), mfrow = c(5, 5))
+index <- sample(seq(50000), 25)
+for (i in index) plot(as.raster(x_train[i,,, ]))
+```
+
+The `as.raster()` function converts the feature map so that it can be plotted as a color image.
+
+Here we specify a moderately-sized  CNN for demonstration purposes.
+
+```{r chunk25}
+model <- keras_model_sequential(
+  layers = list(
+    layer_input(shape = c(32L, 32L, 3L)),
+    layer_conv_2d(filters = 32, kernel_size = c(3L, 3L),
+                  padding = "same", activation = "relu"),
+    layer_max_pooling_2d(pool_size = c(2L, 2L)),
+    layer_conv_2d(filters = 64, kernel_size = c(3L, 3L),
+                  padding = "same", activation = "relu"),
+    layer_max_pooling_2d(pool_size = c(2L, 2L)),
+    layer_conv_2d(filters = 128, kernel_size = c(3L, 3L),
+                  padding = "same", activation = "relu"),
+    layer_max_pooling_2d(pool_size = c(2L, 2L)),
+    layer_conv_2d(filters = 256, kernel_size = c(3L, 3L),
+                  padding = "same", activation = "relu"),
+    layer_max_pooling_2d(pool_size = c(2L, 2L)),
+    layer_flatten(),
+    layer_dropout(rate = 0.5),
+    layer_dense(units = 512, activation = "relu"),
+    layer_dense(units = 100, activation = "softmax")
+  )
+)
+
+model |> summary()
+```
+
+Notice that we used the `padding = "same"` argument to `layer_conv_2D()`, which ensures that the output channels have the same dimension as the input channels. There are 32 channels in the first hidden layer, in contrast to the three channels in the input layer. We use a $3\times 3$ convolution filter for each channel in all the layers. Each convolution is followed by a max-pooling layer over $2\times2$ blocks. By studying the summary, we can see that the channels halve in both dimensions after each of these max-pooling operations. After the last of these we have a layer with  256 channels of dimension $2\times 2$. These are then flattened to a dense layer of size 1,024: in other words, each of the $2\times 2$ matrices is turned into a 4-vector, and put side-by-side in one layer. This is followed by a dropout regularization layer, then another dense layer of size 512, which finally reaches the softmax output layer.
+
+Finally, we specify the fitting algorithm, and fit the model.
+
+```{r chunk26}
+model |>
+  compile(
+    optimizer = "rmsprop",
+    loss = "categorical_crossentropy",
+    metrics = list("categorical_accuracy")
+  )
+
+history <- model |>
+  fit(
+    x_train, y_train,
+    epochs = 10,
+    batch_size = 128,
+    validation_split = 0.2,
+    verbose = 2
+  )
+
+pred <- model |> predict(x_test)
+pred_class <- max.col(pred, ties.method = "first")
+true_class <- as.numeric(g_test)+1
+mean(pred_class == true_class)
+```
+
+This model takes 10 minutes to run and achieves 45% accuracy on the test data. Although this is not terrible for 100-class data (a random classifier gets 1% accuracy), searching the web we see results around 75%. Typically it takes a lot of architecture carpentry, fiddling with regularization, and time to achieve such results.
+
+### Using Pretrained CNN Models
+
+We now show how to use a CNN pretrained on the `imagenet` database to classify natural images. We copied six jpeg images from a digital photo album into the directory `book_images`. (These images are available from the data section of  <www.statlearning.com>, the ISL book website. Download **book_images.zip**; when clicked it creates the **book_images** directory.) We first read in the images, and convert them into the array format expected by the `keras` software to match the specifications in `imagenet`. Make sure that your working directory in `R` is set to the folder in which the images are stored.
+
+```{r chunk27}
+img_dir <- "book_images"
+image_names <- list.files(img_dir)
+num_images <- length(image_names)
+x <- array(dim = c(num_images, 224, 224, 3))
+for (i in 1:num_images) {
+  img_path <- paste(img_dir, image_names[i], sep = "/")
+  img <- image_load(img_path, target_size = c(224, 224))
+  x[i,,, ] <- image_to_array(img)
+}
+x <- imagenet_preprocess_input(x)
+```
+
+We then load the trained network. The model has 50 layers, with a fair bit of complexity.
+
+```{r chunk28}
+model <- application_resnet50(weights = "imagenet")
+summary(model)
+```
+
+Finally, we classify our six images, and return the top three class choices in terms of predicted probability for each.
+
+```{r chunk29}
+pred6 <- model %>% predict(x) %>%
+  imagenet_decode_predictions(top = 3)
+names(pred6) <- image_names
+print(pred6)
+```
+
+<!-- ## IMDb Document Classification -->
+<!-- Now we perform document classification on the `IMDB` dataset, which is available as part of the `keras` package. We limit the dictionary size to the 10,000  most frequently-used words and tokens. -->
+
+<!-- ```{r chunk30} -->
+<!-- max_features <- 10000 -->
+<!-- imdb <- dataset_imdb(num_words = max_features) -->
+<!-- c(c(x_train, y_train), c(x_test, y_test)) %<-% imdb -->
+<!-- ``` -->
+
+<!-- The third line is a shortcut for unpacking the list of lists. Each element of `x_train` is a vector of numbers between 0 and 9999 (the document), referring to the words found in the dictionary. The indices of the first 12 words are given below. -->
+
+<!-- ```{r chunk31} -->
+<!-- x_train[[1]][1:12] -->
+<!-- ``` -->
+
+<!-- To see the words, we create a function, `decode_review()`, that provides a simple interface to the dictionary. -->
+
+<!-- ```{r chunk32} -->
+<!-- word_index <- dataset_imdb_word_index() -->
+<!-- decode_review <- function(text, word_index) { -->
+<!--   word <- names(word_index) -->
+<!--   idx <- unlist(word_index, use.names = FALSE) -->
+<!--   word <- c("<PAD>", "<START>", "<UNK>", "<UNUSED>", word) -->
+<!--   idx <- c(0:3, idx + 3) -->
+<!--   words <- word[match(text, idx, 2)] -->
+<!--   paste(words, collapse = " ") -->
+<!-- } -->
+<!-- decode_review(x_train[[1]][1:12], word_index) -->
+<!-- ``` -->
+
+<!-- Next we write a function to "one-hot" encode each document in a list of documents, and return a binary matrix in sparse-matrix format. -->
+
+<!-- ```{r chunk33} -->
+<!-- library(Matrix) -->
+<!-- one_hot <- function(sequences, dimension) { -->
+<!--   seqlen <- sapply(sequences, length) -->
+<!--   n <- length(seqlen) -->
+<!--   rowind <- rep(1:n, seqlen) -->
+<!--   colind <- unlist(sequences) -->
+<!--   sparseMatrix(i = rowind, j = colind, dims = c(n, dimension)) -->
+<!-- } -->
+<!-- ``` -->
+
+<!-- To construct the sparse matrix, one supplies just the entries that are nonzero. In the last line we call the function `sparseMatrix()` and supply the row indices corresponding to each document and the column indices corresponding to the words in each document, since we omit the values they are taken to be all ones. Words that appear more than once in any given document still get recorded as a one. -->
+
+<!-- ```{r chunk34} -->
+<!-- x_train_1h <- one_hot(x_train, 10000) -->
+<!-- x_test_1h <- one_hot(x_test, 10000) -->
+<!-- dim(x_train_1h) -->
+<!-- nnzero(x_train_1h) / (25000 * 10000) -->
+<!-- ``` -->
+
+<!-- Only 1.3% of the entries are nonzero, so this amounts to considerable savings in memory. We create a validation set of size 2,000, leaving 23,000 for training. -->
+
+<!-- ```{r chunk35} -->
+<!-- set.seed(3) -->
+<!-- ival <- sample(seq(along = y_train), 2000) -->
+<!-- ``` -->
+
+<!-- First we fit a lasso logistic regression model using `glmnet()` on the training data, and evaluate its performance on the validation data. Finally, we plot the accuracy, `acclmv`, as a function of the shrinkage parameter, $\lambda$. Similar expressions compute the performance on the test data. The code  takes advantage of the sparse-matrix format of `x_train_1h`, and runs in about 5 seconds; in the usual dense format it would take about 5 minutes. -->
+
+<!-- ```{r chunk36} -->
+<!-- library(glmnet) -->
+<!-- fitlm <- glmnet(x_train_1h[-ival, ], y_train[-ival], -->
+<!--     family = "binomial", standardize = FALSE) -->
+<!-- classlmv <- predict(fitlm, x_train_1h[ival, ]) > 0 -->
+<!-- acclmv <- apply(classlmv, 2, accuracy,  y_train[ival] > 0) -->
+<!-- ``` -->
+
+<!-- We applied the `accuracy()` function to every column of the prediction matrix `classlmv`, and since this is a logical matrix of  `TRUE/FALSE` values, we supply the second argument `truth` as a logical vector as well. -->
+
+<!-- Before making a plot, we adjust the plotting window. -->
+
+<!-- ```{r chunk37} -->
+<!-- par(mar = c(4, 4, 4, 4), mfrow = c(1, 1)) -->
+<!-- plot(-log(fitlm$lambda), acclmv) -->
+<!-- ``` -->
+
+<!-- Next we fit a fully-connected neural network with two hidden layers, each with 16 units and ReLU activation. -->
+
+<!-- ```{r chunk38} -->
+<!-- x_train_1h <- as.matrix(x_train_1h); storage.mode(x_train_1h) <- "double" -->
+
+<!-- model <- keras_model_sequential( -->
+<!--   layers = list( -->
+<!--     layer_input(shape = 10000L), -->
+<!--     layer_dense(units = 16, activation = "relu"), -->
+<!--     layer_dense(units = 16, activation = "relu"), -->
+<!--     layer_dense(units = 1,  activation = "sigmoid") -->
+<!--   ) -->
+<!-- ) |> -->
+<!--   compile( -->
+<!--     optimizer = "rmsprop", -->
+<!--     loss      = "binary_crossentropy", -->
+<!--     metrics   = list("accuracy") -->
+<!--   ) -->
+
+<!-- history <- model |> -->
+<!--   fit( -->
+<!--     x = x_train_1h[-ival, , drop = FALSE], -->
+<!--     y = y_train[-ival], -->
+<!--     epochs = 20, -->
+<!--     batch_size = 512, -->
+<!--     validation_data = list( -->
+<!--       x_train_1h[ival, , drop = FALSE], -->
+<!--       y_train[ival] -->
+<!--     ), -->
+<!--     verbose = 2 -->
+<!--   ) -->
+<!-- ``` -->
+
+<!-- The `history` object has a `metrics` component that records both the training and validation accuracy at each epoch. To compute the test accuracy, we rerun the entire sequence above, replacing the last line with -->
+
+<!-- ```{r chunk39} -->
+<!-- history <- model |> -->
+<!--   fit( -->
+<!--     x = x_train_1h[-ival, , drop = FALSE], -->
+<!--     y = y_train[-ival], -->
+<!--     epochs = 20, -->
+<!--     batch_size = 512, -->
+<!--     validation_data = list( -->
+<!--       x_test_1h[, , drop = FALSE], -->
+<!--       y_test -->
+<!--     ), -->
+<!--     verbose = 2 -->
+<!--   ) -->
+<!-- ``` -->
+
+## Convolutional Neural Networks with Torch
+
+In this section we fit a CNN to the `CIFAR` data, which is available in the `torchvision` package. It is arranged in a similar fashion as the `MNIST` data.
+
+```{r}
+# install.packages("torch")
+# install.packages("luz")
+# install.packages("torchvision")
+# install.packages("torchdatasets")
+# install.packages("zeallot")
+library(torch)
+library(luz) # high-level interface for torch
+library(torchvision) # for datasets and image transformation
+library(torchdatasets) # for datasets we are going to use
+library(zeallot)
+torch_manual_seed(6805)
+```
+
+```{r}
+transform <- function(x) {
+  transform_to_tensor(x)
+}
+
+train_ds <- cifar100_dataset(
+  root = "./", 
+  train = TRUE, 
+  download = TRUE, 
+  transform = transform
+)
+
+test_ds <- cifar100_dataset(
+  root = "./", 
+  train = FALSE, 
+  transform = transform
+)
+
+str(train_ds[1])
+length(train_ds)
+```
+
+The CIFAR dataset consists of 50,000 training images, each represented by a 3d tensor: each three-color image is represented as a set of three channels, each of which consists of $32\times 32$ eight-bit pixels. We standardize as we did for the digits, but keep the array structure. This is accomplished with the `transform` argument.
+
+Before we start, we look at some of the training images.
+
+```{r}
+par(mar = c(0, 0, 0, 0), mfrow = c(5, 5))
+index <- sample(seq(50000), 25)
+for (i in index) plot(as.raster(as.array(train_ds[i][[1]]$permute(c(2,3,1)))))
+```
+
+The `as.raster()` function converts the feature map so that it can be plotted as a color image.
+
+Here we specify a moderately-sized CNN for demonstration purposes.
+
+```{r}
+conv_block <- nn_module(
+  initialize = function(in_channels, out_channels) {
+    self$conv <- nn_conv2d(
+      in_channels = in_channels, 
+      out_channels = out_channels, 
+      kernel_size = c(3,3), 
+      padding = "same"
+    )
+    self$relu <- nn_relu()
+    self$pool <- nn_max_pool2d(kernel_size = c(2,2))
+  },
+  forward = function(x) {
+    x %>% 
+      self$conv() %>% 
+      self$relu() %>% 
+      self$pool()
+  }
+)
+
+model <- nn_module(
+  initialize = function() {
+    self$conv <- nn_sequential(
+      conv_block(3, 32),
+      conv_block(32, 64),
+      conv_block(64, 128),
+      conv_block(128, 256)
+    )
+    self$output <- nn_sequential(
+      nn_dropout(0.5),
+      nn_linear(2*2*256, 512),
+      nn_relu(),
+      nn_linear(512, 100)
+    )
+  },
+  forward = function(x) {
+    x %>% 
+      self$conv() %>% 
+      torch_flatten(start_dim = 2) %>% 
+      self$output()
+  }
+)
+model()
+```
+
+Notice that we used the `padding = "same"` argument to `nn_conv2d()`, which ensures that the output channels have the same dimension as the input channels. There are 32 channels in the first hidden layer, in contrast to the three channels in the input layer. We use a $3\times 3$ convolution filter for each channel in all the layers. Each convolution is followed by a max-pooling layer over $2\times2$ blocks. By studying the summary, we can see that the channels halve in both dimensions after each of these max-pooling operations. After the last of these we have a layer with  256 channels of dimension $2\times 2$. These are then flattened to a dense layer of size 1,024: in other words, each of the $2\times 2$ matrices is turned into a 4-vector, and put side-by-side in one layer. This is followed by a dropout regularization layer,  then another dense layer of size 512, and finally, the output layer.
+
+Finally, we specify the fitting algorithm, and fit the model.
+
+```{r}
+fitted <- model %>% 
+  setup(
+    loss = nn_cross_entropy_loss(),
+    optimizer = optim_rmsprop, 
+    metrics = list(luz_metric_accuracy())
+  ) %>% 
+  set_opt_hparams(lr = 0.001) %>% 
+  fit(
+    train_ds,
+    epochs = 10, #30,
+    valid_data = 0.2,
+    dataloader_options = list(batch_size = 128)
+  )
+
+print(fitted)
+
+evaluate(fitted, test_ds)
+```
+
+This model takes 10 minutes to run and achieves 36% accuracy on the test data. Although this is not terrible for 100-class data (a random classifier gets 1% accuracy), searching the web we see results around 75%. Typically it takes a lot of architecture carpentry, fiddling with regularization, and time to achieve such results.
+
+### Using Pretrained CNN Models
+
+We now show how to use a CNN pretrained on the  `imagenet` database to classify natural images. We copied six jpeg images from a digital photo album into the directory `book_images`. (These images are available from the data section of [www.statlearning.com](www.statlearning.com), the ISLR book website. Download `book_images.zip`; when clicked it creates the `book_images` directory.) We first read in the images, and convert them into the array format expected by the `torch` software to match the specifications in `imagenet`. Make sure that your working directory in `R` is set to the folder in which the images are stored.
+
+```{r}
+img_dir <- "book_images"
+image_names <- list.files(img_dir)
+num_images <- length(image_names)
+x <- torch_empty(num_images, 3, 224, 224)
+for (i in 1:num_images) {
+   img_path <- file.path(img_dir, image_names[i])
+   img <- img_path %>% 
+     base_loader() %>% 
+     transform_to_tensor() %>% 
+     transform_resize(c(224, 224)) %>% 
+     # normalize with imagenet mean and stds.
+     transform_normalize(
+       mean = c(0.485, 0.456, 0.406),
+       std = c(0.229, 0.224, 0.225)
+     )
+   x[i,,, ] <- img
+}
+```
+
+We then load the trained network. The model has 18 layers, with a fair bit of complexity.
+
+```{r}
+model <- torchvision::model_resnet18(pretrained = TRUE)
+model$eval() # put the model in evaluation mode
+```
+
+Finally, we classify our six images, and return the top three class choices in terms of predicted probability for each.
+
+```{r}
+preds <- model(x)
+
+mapping <- jsonlite::read_json("https://s3.amazonaws.com/deep-learning-models/image-models/imagenet_class_index.json") %>% 
+  sapply(function(x) x[[2]])
+
+top3 <- torch_topk(preds, dim = 2, k = 3)
+
+top3_prob <- top3[[1]] %>% 
+  nnf_softmax(dim = 2) %>% 
+  torch_unbind() %>% 
+  lapply(as.numeric)
+
+top3_class <- top3[[2]] %>% 
+  torch_unbind() %>% 
+  lapply(function(x) mapping[as.integer(x)])
+
+result <- purrr::map2(top3_prob, top3_class, function(pr, cl) {
+  names(pr) <- cl
+  pr
+})
+names(result) <- image_names
+print(result)
+```
+
+<!-- ## IMDb Document Classification -->
+
+<!-- Now we perform document classification (Section 10.4) on the `IMDB` dataset, which is available as part of the `torchdatasets` -->
+<!-- package. We  limit the dictionary size to the -->
+<!-- 10,000  most frequently-used words and tokens. -->
+
+<!-- ```{r} -->
+<!-- set.seed(1) -->
+<!-- max_features <- 10000 -->
+<!-- imdb_train <- imdb_dataset( -->
+<!--   root = ".",  -->
+<!--   download = TRUE, -->
+<!--   split="train", -->
+<!--   num_words = max_features -->
+<!-- ) -->
+<!-- imdb_test <- imdb_dataset( -->
+<!--   root = ".",  -->
+<!--   download = TRUE, -->
+<!--   split="test", -->
+<!--   num_words = max_features -->
+<!-- ) -->
+<!-- ``` -->
+
+<!-- Each element of `imdb_train` is a vector of numbers between 1 and -->
+<!-- 10000 (the document), referring to the words found in the dictionary. -->
+<!-- For example, the first training document is the positive review on -->
+<!-- page  419. The indices of the first 12 words are given below. -->
+
+
+<!-- ```{r} -->
+<!-- imdb_train[1]$x[1:12] -->
+<!-- ``` -->
+
+<!-- To see the words, we create a function, `decode_review()`, that provides a simple interface to the dictionary. -->
+
+<!-- ```{r} -->
+<!-- word_index <- imdb_train$vocabulary -->
+<!-- decode_review <- function(text, word_index) { -->
+<!--    word <- names(word_index) -->
+<!--    idx <- unlist(word_index, use.names = FALSE) -->
+<!--    word <- c("<PAD>", "<START>", "<UNK>", word) -->
+<!--    words <- word[text] -->
+<!--    paste(words, collapse = " ") -->
+<!-- } -->
+<!-- decode_review(imdb_train[1]$x[1:12], word_index) -->
+<!-- ``` -->
+
+<!-- Next we write a function to *one-hot* encode each document in a list -->
+<!-- of documents, and return a binary matrix in sparse-matrix format. -->
+
+<!-- ```{r} -->
+<!-- library(Matrix) -->
+<!-- one_hot <- function(sequences, dimension) { -->
+<!--    seqlen <- sapply(sequences, length) -->
+<!--    n <- length(seqlen) -->
+<!--    rowind <- rep(1:n, seqlen) -->
+<!--    colind <- unlist(sequences) -->
+<!--    sparseMatrix(i = rowind, j = colind, -->
+<!--       dims = c(n, dimension)) -->
+<!-- } -->
+<!-- ``` -->
+
+<!-- To construct the sparse matrix, one supplies just the entries that are -->
+<!-- nonzero. In the last line we call the function `sparseMatrix()` and supply the -->
+<!-- row indices corresponding to each document and the column indices -->
+<!-- corresponding to the words in each document, since we omit the -->
+<!-- values they are taken to be all ones. -->
+<!-- Words that appear more than once in any given document still get -->
+<!-- recorded as a one. -->
+
+<!-- ```{r} -->
+<!-- # collect all values into a list -->
+<!-- train <- seq_along(imdb_train) %>%  -->
+<!--   lapply(function(i) imdb_train[i]) %>%  -->
+<!--   purrr::transpose() -->
+<!-- test <- seq_along(imdb_test) %>%  -->
+<!--   lapply(function(i) imdb_test[i]) %>%  -->
+<!--   purrr::transpose() -->
+
+<!-- # num_words + padding + start + oov token = 10000 + 3 -->
+<!-- x_train_1h <- one_hot(train$x, 10000 + 3) -->
+<!-- x_test_1h <- one_hot(test$x, 10000 + 3) -->
+<!-- dim(x_train_1h) -->
+<!-- nnzero(x_train_1h) / (25000 * (10000 + 3)) -->
+<!-- ``` -->
+
+<!-- Only 1.3% of the entries are nonzero, so this amounts to considerable -->
+<!-- savings in memory. -->
+<!-- We create a validation set of size 2,000, leaving 23,000 for training. -->
+
+<!-- ```{r} -->
+<!-- set.seed(3) -->
+<!-- ival <- sample(seq(along = train$y), 2000) -->
+<!-- itrain <- seq_along(train$y)[-ival] -->
+<!-- ``` -->
+
+<!-- First we fit a lasso logistic regression model using `glmnet()` -->
+<!-- on the training data, and evaluate its performance on the validation -->
+<!-- data. Finally, we plot the accuracy, `acclmv`, as a function of -->
+<!-- the shrinkage parameter, $\lambda$. Similar expressions compute the -->
+<!-- performance on the test data, and were used to produce the left plot -->
+<!-- in Figure 10.11. -->
+
+<!-- The code  takes advantage of the sparse-matrix format of -->
+<!-- `x_train_1h`, and runs in about 5 seconds; in the usual -->
+<!-- dense format it would take about 5 minutes. -->
+
+<!-- ```{r} -->
+<!-- library(glmnet) -->
+<!-- y_train <- unlist(train$y) -->
+
+<!-- fitlm <- glmnet(x_train_1h[itrain, ], unlist(y_train[itrain]), -->
+<!--     family = "binomial", standardize = FALSE) -->
+<!-- classlmv <- predict(fitlm, x_train_1h[ival, ]) > 0 -->
+<!-- acclmv <- apply(classlmv, 2, accuracy,  unlist(y_train[ival]) > 0) -->
+<!-- ``` -->
+
+<!-- We applied the `accuracy()` function that we wrote in Lab 10.9.2 -->
+<!-- to every column of the prediction matrix -->
+<!-- `classlmv`, and since this is a logical matrix of  `TRUE/FALSE` values, we -->
+<!-- supply the second argument `truth` as a logical vector as well. -->
+
+<!-- Before making a plot, we adjust the plotting window. -->
+
+<!-- ```{r} -->
+<!-- par(mar = c(4, 4, 4, 4), mfrow = c(1, 1)) -->
+<!-- plot(-log(fitlm$lambda), acclmv) -->
+<!-- ``` -->
+
+<!-- Next we fit a fully-connected neural network with two hidden layers, -->
+<!-- each with 16 units and ReLU activation. -->
+
+<!-- ```{r} -->
+<!-- model <- nn_module( -->
+<!--   initialize = function(input_size = 10000 + 3) { -->
+<!--     self$dense1 <- nn_linear(input_size, 16) -->
+<!--     self$relu <- nn_relu() -->
+<!--     self$dense2 <- nn_linear(16, 16) -->
+<!--     self$output <- nn_linear(16, 1) -->
+<!--   }, -->
+<!--   forward = function(x) { -->
+<!--     x %>%  -->
+<!--       self$dense1() %>%  -->
+<!--       self$relu() %>%  -->
+<!--       self$dense2() %>%  -->
+<!--       self$relu() %>%  -->
+<!--       self$output() %>%  -->
+<!--       torch_flatten(start_dim = 1) -->
+<!--   } -->
+<!-- ) -->
+<!-- model <- model %>%  -->
+<!--   setup( -->
+<!--     loss = nn_bce_with_logits_loss(), -->
+<!--     optimizer = optim_rmsprop, -->
+<!--     metrics = list(luz_metric_binary_accuracy_with_logits()) -->
+<!--   ) %>%  -->
+<!--   set_opt_hparams(lr = 0.001) -->
+
+<!-- fitted <- model %>%  -->
+<!--   fit( -->
+<!--     # we transform the training and validation data into torch tensors -->
+<!--     list( -->
+<!--       torch_tensor(as.matrix(x_train_1h[itrain,]), dtype = torch_float()),  -->
+<!--       torch_tensor(unlist(train$y[itrain])) -->
+<!--     ), -->
+<!--     valid_data = list( -->
+<!--       torch_tensor(as.matrix(x_train_1h[ival, ]), dtype = torch_float()),  -->
+<!--       torch_tensor(unlist(train$y[ival])) -->
+<!--     ), -->
+<!--     dataloader_options = list(batch_size = 512), -->
+<!--     epochs = 10 -->
+<!--   ) -->
+
+<!-- plot(fitted)   -->
+<!-- ``` -->
+
+<!-- The `fitted` object has a `get_metrics` method that -->
+<!-- gets both the training and validation accuracy at each epoch. -->
+<!-- Figure 10.11 includes test accuracy at each epoch as well. To -->
+<!-- compute the test accuracy, we -->
+<!-- rerun the entire sequence above, replacing the last line with -->
+
+<!-- ```{r} -->
+<!-- fitted <- model %>%  -->
+<!--   fit( -->
+<!--     list( -->
+<!--       torch_tensor(as.matrix(x_train_1h[itrain,]), dtype = torch_float()),  -->
+<!--       torch_tensor(unlist(train$y[itrain])) -->
+<!--     ), -->
+<!--     valid_data = list( -->
+<!--       torch_tensor(as.matrix(x_test_1h), dtype = torch_float()),  -->
+<!--       torch_tensor(unlist(test$y)) -->
+<!--     ), -->
+<!--     dataloader_options = list(batch_size = 512), -->
+<!--     epochs = 10 -->
+<!--   ) -->
+<!-- ``` -->
