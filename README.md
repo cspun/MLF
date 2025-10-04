@@ -19,6 +19,6 @@ Supervised Learning V - Support Vector Machines: https://personal.ntu.edu.sg/csp
 
 Deep Learning I - Feedforward Neural Networks: https://personal.ntu.edu.sg/cspun/dp-I.html
 
-Deep Learning II - Long-Short Term Memory: https://personal.ntu.edu.sg/cspun/dp-II.html
+Deep Learning II - Long Short-Term Memory: https://personal.ntu.edu.sg/cspun/dp-II.html
 
 Deep Learning III - Convolutional Neural Networks: https://personal.ntu.edu.sg/cspun/dp-III.html
