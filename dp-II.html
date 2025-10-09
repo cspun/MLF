@@ -1,0 +1,1033 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+<meta charset="utf-8" />
+<meta name="generator" content="pandoc" />
+<meta http-equiv="X-UA-Compatible" content="IE=EDGE" />
+
+
+<meta name="author" content="Patrick PUN Chi Seng (NTU Sg)" />
+
+
+<title>Deep Learning II - Long-Short Term Memory</title>
+
+<script src="dp-II_files/header-attrs-2.29/header-attrs.js"></script>
+<script src="dp-II_files/jquery-3.6.0/jquery-3.6.0.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="dp-II_files/bootstrap-3.3.5/css/bootstrap.min.css" rel="stylesheet" />
+<script src="dp-II_files/bootstrap-3.3.5/js/bootstrap.min.js"></script>
+<script src="dp-II_files/bootstrap-3.3.5/shim/html5shiv.min.js"></script>
+<script src="dp-II_files/bootstrap-3.3.5/shim/respond.min.js"></script>
+<style>h1 {font-size: 34px;}
+       h1.title {font-size: 38px;}
+       h2 {font-size: 30px;}
+       h3 {font-size: 24px;}
+       h4 {font-size: 18px;}
+       h5 {font-size: 16px;}
+       h6 {font-size: 12px;}
+       code {color: inherit; background-color: rgba(0, 0, 0, 0.04);}
+       pre:not([class]) { background-color: white }</style>
+<script src="dp-II_files/navigation-1.1/tabsets.js"></script>
+<link href="dp-II_files/highlightjs-9.12.0/default.css" rel="stylesheet" />
+<script src="dp-II_files/highlightjs-9.12.0/highlight.js"></script>
+<link href="dp-II_files/pagedtable-1.1/css/pagedtable.css" rel="stylesheet" />
+<script src="dp-II_files/pagedtable-1.1/js/pagedtable.js"></script>
+
+<style type="text/css">
+  code{white-space: pre-wrap;}
+  span.smallcaps{font-variant: small-caps;}
+  span.underline{text-decoration: underline;}
+  div.column{display: inline-block; vertical-align: top; width: 50%;}
+  div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+  ul.task-list{list-style: none;}
+    </style>
+
+<style type="text/css">code{white-space: pre;}</style>
+<script type="text/javascript">
+if (window.hljs) {
+  hljs.configure({languages: []});
+  hljs.initHighlightingOnLoad();
+  if (document.readyState && document.readyState === "complete") {
+    window.setTimeout(function() { hljs.initHighlighting(); }, 0);
+  }
+}
+</script>
+
+
+
+
+
+
+
+
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+img {
+  max-width:100%;
+}
+.tabbed-pane {
+  padding-top: 12px;
+}
+.html-widget {
+  margin-bottom: 20px;
+}
+button.code-folding-btn:focus {
+  outline: none;
+}
+summary {
+  display: list-item;
+}
+details > summary > p:only-child {
+  display: inline;
+}
+pre code {
+  padding: 0;
+}
+</style>
+
+
+
+<!-- tabsets -->
+
+<style type="text/css">
+.tabset-dropdown > .nav-tabs {
+  display: inline-table;
+  max-height: 500px;
+  min-height: 44px;
+  overflow-y: auto;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.tabset-dropdown > .nav-tabs > li.active:before, .tabset-dropdown > .nav-tabs.nav-tabs-open:before {
+  content: "\e259";
+  font-family: 'Glyphicons Halflings';
+  display: inline-block;
+  padding: 10px;
+  border-right: 1px solid #ddd;
+}
+
+.tabset-dropdown > .nav-tabs.nav-tabs-open > li.active:before {
+  content: "\e258";
+  font-family: 'Glyphicons Halflings';
+  border: none;
+}
+
+.tabset-dropdown > .nav-tabs > li.active {
+  display: block;
+}
+
+.tabset-dropdown > .nav-tabs > li > a,
+.tabset-dropdown > .nav-tabs > li > a:focus,
+.tabset-dropdown > .nav-tabs > li > a:hover {
+  border: none;
+  display: inline-block;
+  border-radius: 4px;
+  background-color: transparent;
+}
+
+.tabset-dropdown > .nav-tabs.nav-tabs-open > li {
+  display: block;
+  float: none;
+}
+
+.tabset-dropdown > .nav-tabs > li {
+  display: none;
+}
+</style>
+
+<!-- code folding -->
+
+
+
+
+</head>
+
+<body>
+
+
+<div class="container-fluid main-container">
+
+
+
+
+<div id="header">
+
+
+
+<h1 class="title toc-ignore">Deep Learning II - Long-Short Term
+Memory</h1>
+<h4 class="author">Patrick PUN Chi Seng (NTU Sg)</h4>
+
+</div>
+
+
+<div id="references" class="section level2">
+<h2>References</h2>
+<p>Chapter 10.9.5 and 10.9.6 [ISLR2] An Introduction to Statistical
+Learning - with Applications in R (2nd Edition). Free access to download
+the book: <a href="https://www.statlearning.com/"
+class="uri">https://www.statlearning.com/</a></p>
+<p>To see the help file of a function <code>funcname</code>, type
+<code>?funcname</code>.</p>
+<p>Getting <code>keras</code> up and running on your computer can be a
+challenge. The book website &lt;www.statlearning.com&gt; gives
+step-by-step instructions on how to achieve this. Guidance can also be
+found at &lt;keras.rstudio.com&gt;.</p>
+<p>The <code>torch</code> package has become available as an alternative
+to the <code>keras</code> package for deep learning. While
+<code>torch</code> does not require a <code>python</code> installation,
+the current implementation appears to be a fair bit slower than
+<code>keras</code>. We include the <code>torch</code> version of the
+implementation at the end of this lab.</p>
+</div>
+<div id="lstm-with-keras" class="section level2">
+<h2>LSTM with Keras</h2>
+<p>In this section, we use the <code>keras</code> package, which
+interfaces to the <code>tensorflow</code> package which in turn links to
+efficient <code>python</code> code. This code is impressively fast, and
+the package is well-structured.</p>
+<pre class="r"><code># install.packages(&quot;keras3&quot;) # Uncomment to Run it for the first time
+# install.packages(&quot;reticulate&quot;) # Uncomment to Run it for the first time
+library(reticulate)
+use_condaenv(&quot;r-reticulate&quot;, required = TRUE)
+library(keras3)
+# install_keras(method = &quot;conda&quot;, envname = &quot;r-reticulate&quot;) # Uncomment to Run it for the first time</code></pre>
+<div id="imdb-document-classification" class="section level3">
+<h3>IMDb Document Classification</h3>
+<p>Here we fit a simple LSTM RNN for sentiment analysis with the
+<code>IMDb</code> movie-review data.</p>
+<p>Now we perform document classification on the <code>IMDB</code>
+dataset, which is available as part of the <code>keras</code> package.
+We limit the dictionary size to the 10,000 most frequently-used words
+and tokens.</p>
+<pre class="r"><code>max_features &lt;- 10000
+imdb &lt;- dataset_imdb(num_words = max_features)
+c(c(x_train, y_train), c(x_test, y_test)) %&lt;-% imdb</code></pre>
+<p>The third line is a shortcut for unpacking the list of lists. Each
+element of <code>x_train</code> is a vector of numbers between 0 and
+9999 (the document), referring to the words found in the dictionary. The
+indices of the first 12 words are given below.</p>
+<pre class="r"><code>x_train[[1]][1:12]</code></pre>
+<pre><code>##  [1]    1   14   22   16   43  530  973 1622 1385   65  458 4468</code></pre>
+<p>To see the words, we create a function, <code>decode_review()</code>,
+that provides a simple interface to the dictionary.</p>
+<pre class="r"><code>word_index &lt;- dataset_imdb_word_index()
+decode_review &lt;- function(text, word_index) {
+  word &lt;- names(word_index)
+  idx &lt;- unlist(word_index, use.names = FALSE)
+  word &lt;- c(&quot;&lt;PAD&gt;&quot;, &quot;&lt;START&gt;&quot;, &quot;&lt;UNK&gt;&quot;, &quot;&lt;UNUSED&gt;&quot;, word)
+  idx &lt;- c(0:3, idx + 3)
+  words &lt;- word[match(text, idx, 2)]
+  paste(words, collapse = &quot; &quot;)
+}
+decode_review(x_train[[1]][1:12], word_index)</code></pre>
+<pre><code>## [1] &quot;&lt;START&gt; this film was just brilliant casting location scenery story direction everyone&#39;s&quot;</code></pre>
+<p>Next we write a function to “one-hot” encode each document in a list
+of documents, and return a binary matrix in sparse-matrix format.</p>
+<pre class="r"><code>library(Matrix)
+one_hot &lt;- function(sequences, dimension) {
+  seqlen &lt;- sapply(sequences, length)
+  n &lt;- length(seqlen)
+  rowind &lt;- rep(1:n, seqlen)
+  colind &lt;- unlist(sequences)
+  sparseMatrix(i = rowind, j = colind,
+      dims = c(n, dimension))
+}</code></pre>
+<p>To construct the sparse matrix, one supplies just the entries that
+are nonzero. In the last line we call the function
+<code>sparseMatrix()</code> and supply the row indices corresponding to
+each document and the column indices corresponding to the words in each
+document, since we omit the values they are taken to be all ones. Words
+that appear more than once in any given document still get recorded as a
+one.</p>
+<pre class="r"><code>x_train_1h &lt;- one_hot(x_train, 10000)
+x_test_1h &lt;- one_hot(x_test, 10000)
+dim(x_train_1h)</code></pre>
+<pre><code>## [1] 25000 10000</code></pre>
+<pre class="r"><code>nnzero(x_train_1h) / (25000 * 10000)</code></pre>
+<pre><code>## [1] 0.01316987</code></pre>
+<p>Only 1.3% of the entries are nonzero, so this amounts to considerable
+savings in memory. We create a validation set of size 2,000, leaving
+23,000 for training.</p>
+<pre class="r"><code>set.seed(3)
+ival &lt;- sample(seq(along = y_train), 2000)</code></pre>
+<p>We first calculate the lengths of the documents.</p>
+<pre class="r"><code>wc &lt;- sapply(x_train, length)
+median(wc)</code></pre>
+<pre><code>## [1] 178</code></pre>
+<pre class="r"><code>sum(wc &lt;= 500) / length(wc)</code></pre>
+<pre><code>## [1] 0.91568</code></pre>
+<p>We see that over 91% of the documents have fewer than 500 words. Our
+RNN requires all the document sequences to have the same length. We
+hence restrict the document lengths to the last <span
+class="math inline">\(L=500\)</span> words, and pad the beginning of the
+shorter ones with blanks.</p>
+<pre class="r"><code>maxlen &lt;- 500
+x_train &lt;- pad_sequences(x_train, maxlen = maxlen)
+x_test &lt;- pad_sequences(x_test, maxlen = maxlen)
+dim(x_train)</code></pre>
+<pre><code>## [1] 25000   500</code></pre>
+<pre class="r"><code>dim(x_test)</code></pre>
+<pre><code>## [1] 25000   500</code></pre>
+<pre class="r"><code>x_train[1, 490:500]</code></pre>
+<pre><code>##  [1]   16 4472  113  103   32   15   16 5345   19  178   32</code></pre>
+<p>The last expression shows the last few words in the first document.
+At this stage, each of the 500 words in the document is represented
+using an integer corresponding to the location of that word in the
+10,000-word dictionary. The first layer of the RNN is an embedding layer
+of size 32, which will be learned during training. This layer one-hot
+encodes each document as a matrix of dimension <span
+class="math inline">\(500 \times 10,000\)</span>, and then maps these
+10,000 dimensions down to 32.</p>
+<pre class="r"><code>model &lt;- keras_model_sequential() %&gt;%
+  layer_embedding(input_dim = 10000, output_dim = 32) %&gt;%
+  layer_lstm(units = 32) %&gt;%
+  layer_dense(units = 1, activation = &quot;sigmoid&quot;)</code></pre>
+<p>The second layer is an LSTM with 32 units, and the output layer is a
+single sigmoid for the binary classification task.</p>
+<p>The rest is now similar to other networks we have fit. We track the
+test performance as the network is fit, and see that it attains 87%
+accuracy.</p>
+<pre class="r"><code>model %&gt;% compile(optimizer = &quot;rmsprop&quot;,
+    loss = &quot;binary_crossentropy&quot;, metrics = c(&quot;acc&quot;))
+#history &lt;- model %&gt;% fit(x_train, y_train, epochs = 10,
+history &lt;- model %&gt;% fit(x_train, y_train, epochs = 3,
+    batch_size = 128, validation_data = list(x_test, y_test))</code></pre>
+<pre><code>## Epoch 1/3
+## 196/196 - 80s - 408ms/step - acc: 0.6957 - loss: 0.5598 - val_acc: 0.7373 - val_loss: 0.5335
+## Epoch 2/3
+## 196/196 - 57s - 289ms/step - acc: 0.8424 - loss: 0.3742 - val_acc: 0.8492 - val_loss: 0.3591
+## Epoch 3/3
+## 196/196 - 55s - 281ms/step - acc: 0.8738 - loss: 0.3086 - val_acc: 0.8610 - val_loss: 0.3288</code></pre>
+<pre class="r"><code>plot(history)</code></pre>
+<p><img src="dp-II_files/figure-html/chunk43-1.png" width="672" /></p>
+<pre class="r"><code>predy &lt;- predict(model, x_test) &gt; 0.5</code></pre>
+<pre><code>## 782/782 - 21s - 27ms/step</code></pre>
+<pre class="r"><code>mean(abs(y_test == as.numeric(predy)))</code></pre>
+<pre><code>## [1] 0.861</code></pre>
+</div>
+<div id="time-series-prediction" class="section level3">
+<h3>Time Series Prediction</h3>
+<p>We now show how to fit the models for time series prediction. We
+first set up the data, and standardize each of the variables.</p>
+<pre class="r"><code>library(ISLR2)
+xdata &lt;- data.matrix(
+    NYSE[, c(&quot;DJ_return&quot;, &quot;log_volume&quot;,&quot;log_volatility&quot;)]
+  )
+istrain &lt;- NYSE[, &quot;train&quot;]
+xdata &lt;- scale(xdata)</code></pre>
+<p>The variable <code>istrain</code> contains a <code>TRUE</code> for
+each year that is in the training set, and a <code>FALSE</code> for each
+year in the test set.</p>
+<p>We first write functions to create lagged versions of the three time
+series. We start with a function that takes as input a data matrix and a
+lag <span class="math inline">\(L\)</span>, and returns a lagged version
+of the matrix. It simply inserts <span class="math inline">\(L\)</span>
+rows of <code>NA</code> at the top, and truncates the bottom.</p>
+<pre class="r"><code>lagm &lt;- function(x, k = 1) {
+  n &lt;- nrow(x)
+  pad &lt;- matrix(NA, k, ncol(x))
+  rbind(pad, x[1:(n - k), ])
+}</code></pre>
+<p>We now use this function to create a data frame with all the required
+lags, as well as the response variable.</p>
+<pre class="r"><code>arframe &lt;- data.frame(log_volume = xdata[, &quot;log_volume&quot;],
+   L1 = lagm(xdata, 1), L2 = lagm(xdata, 2),
+   L3 = lagm(xdata, 3), L4 = lagm(xdata, 4),
+   L5 = lagm(xdata, 5)
+ )</code></pre>
+<p>If we look at the first five rows of this frame, we will see some
+missing values in the lagged variables (due to the construction above).
+We remove these rows, and adjust <code>istrain</code> accordingly.</p>
+<pre class="r"><code>arframe &lt;- arframe[-(1:5), ]
+istrain &lt;- istrain[-(1:5)]</code></pre>
+<p>We now fit the linear AR model to the training data using
+<code>lm()</code>, and predict on the test data.</p>
+<pre class="r"><code>arfit &lt;- lm(log_volume ~ ., data = arframe[istrain, ])
+arpred &lt;- predict(arfit, arframe[!istrain, ])
+V0 &lt;- var(arframe[!istrain, &quot;log_volume&quot;])
+1 - mean((arpred - arframe[!istrain, &quot;log_volume&quot;])^2) / V0</code></pre>
+<pre><code>## [1] 0.413223</code></pre>
+<p>The last two lines compute the <span
+class="math inline">\(R^2\)</span> on the test data. We refit this
+model, including the factor variable <code>day_of_week</code>.</p>
+<pre class="r"><code>arframed &lt;- data.frame(day = NYSE[-(1:5), &quot;day_of_week&quot;], arframe)
+arfitd &lt;- lm(log_volume ~ ., data = arframed[istrain, ])
+arpredd &lt;- predict(arfitd, arframed[!istrain, ])
+1 - mean((arpredd - arframe[!istrain, &quot;log_volume&quot;])^2) / V0</code></pre>
+<pre><code>## [1] 0.4598616</code></pre>
+<p>To fit the RNN, we need to reshape these data, since it expects a
+sequence of <span class="math inline">\(L=5\)</span> feature vectors
+<span class="math inline">\(X={X_\ell}_1^L\)</span> for each
+observation. These are lagged versions of the time series going back
+<span class="math inline">\(L\)</span> time points.</p>
+<pre class="r"><code>n &lt;- nrow(arframe)
+xrnn &lt;- data.matrix(arframe[, -1])
+xrnn &lt;- array(xrnn, c(n, 3, 5))
+xrnn &lt;- xrnn[,, 5:1]
+xrnn &lt;- aperm(xrnn, c(1, 3, 2))
+dim(xrnn)</code></pre>
+<pre><code>## [1] 6046    5    3</code></pre>
+<p>We have done this in four steps. The first simply extracts the <span
+class="math inline">\(n\times 15\)</span> matrix of lagged versions of
+the three predictor variables from <code>arframe</code>. The second
+converts this matrix to an <span class="math inline">\(n\times 3\times
+5\)</span> array. We can do this by simply changing the dimension
+attribute, since the new array is filled column wise. The third step
+reverses the order of lagged variables, so that index 1 is furthest back
+in time, and index 5 closest. The final step rearranges the coordinates
+of the array (like a partial transpose) into the format that the RNN
+module in <code>keras</code> expects.</p>
+<p>Now we are ready to proceed with the RNN, which uses 12 hidden
+units.</p>
+<pre class="r"><code>model &lt;- keras_model_sequential(
+  layers = list(
+    layer_input(shape = c(5L, 3L)),
+    layer_simple_rnn(units = 12, dropout = 0.1, recurrent_dropout = 0.1),
+    layer_dense(units = 1)
+  )
+)
+
+model |&gt; compile(optimizer = &quot;rmsprop&quot;, loss = &quot;mse&quot;)</code></pre>
+<p>We specify two forms of dropout for the units feeding into the hidden
+layer. The first is for the input sequence feeding into this layer, and
+the second is for the previous hidden units feeding into the layer. The
+output layer has a single unit for the response.</p>
+<p>We fit the model in a similar fashion to previous networks. We supply
+the <code>fit</code> function with test data as validation data, so that
+when we monitor its progress and plot the history function we can see
+the progress on the test data. Of course we should not use this as a
+basis for early stopping, since then the test performance would be
+biased.</p>
+<pre class="r"><code>history &lt;- model %&gt;% fit(
+    xrnn[istrain,, ], arframe[istrain, &quot;log_volume&quot;],
+#    batch_size = 64, epochs = 200,
+    batch_size = 64, epochs = 75,
+    validation_data =
+      list(xrnn[!istrain,, ], arframe[!istrain, &quot;log_volume&quot;])
+  )</code></pre>
+<pre><code>## Epoch 1/75
+## 67/67 - 1s - 18ms/step - loss: 0.7294 - val_loss: 0.7172
+## Epoch 2/75
+## 67/67 - 0s - 4ms/step - loss: 0.5603 - val_loss: 0.6693
+## Epoch 3/75
+## 67/67 - 0s - 4ms/step - loss: 0.5317 - val_loss: 0.6646
+## Epoch 4/75
+## 67/67 - 0s - 4ms/step - loss: 0.5161 - val_loss: 0.6575
+## Epoch 5/75
+## 67/67 - 0s - 4ms/step - loss: 0.5058 - val_loss: 0.6587
+## Epoch 6/75
+## 67/67 - 0s - 4ms/step - loss: 0.5112 - val_loss: 0.6544
+## Epoch 7/75
+## 67/67 - 0s - 4ms/step - loss: 0.5038 - val_loss: 0.6533
+## Epoch 8/75
+## 67/67 - 0s - 4ms/step - loss: 0.5080 - val_loss: 0.6537
+## Epoch 9/75
+## 67/67 - 0s - 4ms/step - loss: 0.5137 - val_loss: 0.6524
+## Epoch 10/75
+## 67/67 - 0s - 4ms/step - loss: 0.5131 - val_loss: 0.6518
+## Epoch 11/75
+## 67/67 - 0s - 4ms/step - loss: 0.5114 - val_loss: 0.6486
+## Epoch 12/75
+## 67/67 - 0s - 3ms/step - loss: 0.4957 - val_loss: 0.6527
+## Epoch 13/75
+## 67/67 - 0s - 3ms/step - loss: 0.5021 - val_loss: 0.6484
+## Epoch 14/75
+## 67/67 - 0s - 4ms/step - loss: 0.5070 - val_loss: 0.6460
+## Epoch 15/75
+## 67/67 - 0s - 4ms/step - loss: 0.5025 - val_loss: 0.6495
+## Epoch 16/75
+## 67/67 - 0s - 5ms/step - loss: 0.4956 - val_loss: 0.6457
+## Epoch 17/75
+## 67/67 - 0s - 3ms/step - loss: 0.5032 - val_loss: 0.6471
+## Epoch 18/75
+## 67/67 - 0s - 4ms/step - loss: 0.4904 - val_loss: 0.6456
+## Epoch 19/75
+## 67/67 - 0s - 4ms/step - loss: 0.4834 - val_loss: 0.6435
+## Epoch 20/75
+## 67/67 - 0s - 4ms/step - loss: 0.4878 - val_loss: 0.6406
+## Epoch 21/75
+## 67/67 - 0s - 4ms/step - loss: 0.4980 - val_loss: 0.6460
+## Epoch 22/75
+## 67/67 - 0s - 4ms/step - loss: 0.5028 - val_loss: 0.6442
+## Epoch 23/75
+## 67/67 - 0s - 4ms/step - loss: 0.4979 - val_loss: 0.6419
+## Epoch 24/75
+## 67/67 - 0s - 4ms/step - loss: 0.4879 - val_loss: 0.6414
+## Epoch 25/75
+## 67/67 - 0s - 4ms/step - loss: 0.5031 - val_loss: 0.6398
+## Epoch 26/75
+## 67/67 - 0s - 5ms/step - loss: 0.4807 - val_loss: 0.6373
+## Epoch 27/75
+## 67/67 - 0s - 3ms/step - loss: 0.4879 - val_loss: 0.6410
+## Epoch 28/75
+## 67/67 - 0s - 4ms/step - loss: 0.4840 - val_loss: 0.6366
+## Epoch 29/75
+## 67/67 - 0s - 4ms/step - loss: 0.4914 - val_loss: 0.6364
+## Epoch 30/75
+## 67/67 - 0s - 4ms/step - loss: 0.4774 - val_loss: 0.6349
+## Epoch 31/75
+## 67/67 - 0s - 4ms/step - loss: 0.4825 - val_loss: 0.6338
+## Epoch 32/75
+## 67/67 - 0s - 4ms/step - loss: 0.4898 - val_loss: 0.6348
+## Epoch 33/75
+## 67/67 - 0s - 4ms/step - loss: 0.4918 - val_loss: 0.6343
+## Epoch 34/75
+## 67/67 - 0s - 4ms/step - loss: 0.4802 - val_loss: 0.6370
+## Epoch 35/75
+## 67/67 - 0s - 3ms/step - loss: 0.4776 - val_loss: 0.6320
+## Epoch 36/75
+## 67/67 - 0s - 4ms/step - loss: 0.4783 - val_loss: 0.6355
+## Epoch 37/75
+## 67/67 - 0s - 4ms/step - loss: 0.4833 - val_loss: 0.6321
+## Epoch 38/75
+## 67/67 - 0s - 4ms/step - loss: 0.4707 - val_loss: 0.6363
+## Epoch 39/75
+## 67/67 - 0s - 4ms/step - loss: 0.4782 - val_loss: 0.6315
+## Epoch 40/75
+## 67/67 - 0s - 4ms/step - loss: 0.4693 - val_loss: 0.6331
+## Epoch 41/75
+## 67/67 - 0s - 4ms/step - loss: 0.4741 - val_loss: 0.6329
+## Epoch 42/75
+## 67/67 - 0s - 3ms/step - loss: 0.4725 - val_loss: 0.6330
+## Epoch 43/75
+## 67/67 - 0s - 4ms/step - loss: 0.4842 - val_loss: 0.6303
+## Epoch 44/75
+## 67/67 - 0s - 4ms/step - loss: 0.4753 - val_loss: 0.6335
+## Epoch 45/75
+## 67/67 - 0s - 4ms/step - loss: 0.4703 - val_loss: 0.6327
+## Epoch 46/75
+## 67/67 - 0s - 4ms/step - loss: 0.4862 - val_loss: 0.6318
+## Epoch 47/75
+## 67/67 - 0s - 4ms/step - loss: 0.4791 - val_loss: 0.6330
+## Epoch 48/75
+## 67/67 - 0s - 4ms/step - loss: 0.4776 - val_loss: 0.6326
+## Epoch 49/75
+## 67/67 - 0s - 3ms/step - loss: 0.4739 - val_loss: 0.6319
+## Epoch 50/75
+## 67/67 - 0s - 4ms/step - loss: 0.4726 - val_loss: 0.6307
+## Epoch 51/75
+## 67/67 - 0s - 4ms/step - loss: 0.4715 - val_loss: 0.6307
+## Epoch 52/75
+## 67/67 - 0s - 4ms/step - loss: 0.4735 - val_loss: 0.6333
+## Epoch 53/75
+## 67/67 - 0s - 4ms/step - loss: 0.4819 - val_loss: 0.6320
+## Epoch 54/75
+## 67/67 - 0s - 4ms/step - loss: 0.4712 - val_loss: 0.6289
+## Epoch 55/75
+## 67/67 - 0s - 4ms/step - loss: 0.4761 - val_loss: 0.6311
+## Epoch 56/75
+## 67/67 - 0s - 4ms/step - loss: 0.4818 - val_loss: 0.6279
+## Epoch 57/75
+## 67/67 - 0s - 4ms/step - loss: 0.4701 - val_loss: 0.6315
+## Epoch 58/75
+## 67/67 - 0s - 4ms/step - loss: 0.4866 - val_loss: 0.6337
+## Epoch 59/75
+## 67/67 - 0s - 4ms/step - loss: 0.4803 - val_loss: 0.6296
+## Epoch 60/75
+## 67/67 - 0s - 4ms/step - loss: 0.4724 - val_loss: 0.6277
+## Epoch 61/75
+## 67/67 - 0s - 4ms/step - loss: 0.4788 - val_loss: 0.6310
+## Epoch 62/75
+## 67/67 - 0s - 4ms/step - loss: 0.4816 - val_loss: 0.6269
+## Epoch 63/75
+## 67/67 - 0s - 4ms/step - loss: 0.4603 - val_loss: 0.6283
+## Epoch 64/75
+## 67/67 - 0s - 4ms/step - loss: 0.4679 - val_loss: 0.6310
+## Epoch 65/75
+## 67/67 - 0s - 4ms/step - loss: 0.4729 - val_loss: 0.6287
+## Epoch 66/75
+## 67/67 - 0s - 5ms/step - loss: 0.4825 - val_loss: 0.6322
+## Epoch 67/75
+## 67/67 - 0s - 4ms/step - loss: 0.4762 - val_loss: 0.6268
+## Epoch 68/75
+## 67/67 - 0s - 4ms/step - loss: 0.4667 - val_loss: 0.6283
+## Epoch 69/75
+## 67/67 - 0s - 4ms/step - loss: 0.4837 - val_loss: 0.6252
+## Epoch 70/75
+## 67/67 - 0s - 4ms/step - loss: 0.4712 - val_loss: 0.6241
+## Epoch 71/75
+## 67/67 - 0s - 4ms/step - loss: 0.4757 - val_loss: 0.6327
+## Epoch 72/75
+## 67/67 - 0s - 4ms/step - loss: 0.4666 - val_loss: 0.6268
+## Epoch 73/75
+## 67/67 - 0s - 4ms/step - loss: 0.4736 - val_loss: 0.6292
+## Epoch 74/75
+## 67/67 - 0s - 4ms/step - loss: 0.4729 - val_loss: 0.6310
+## Epoch 75/75
+## 67/67 - 0s - 4ms/step - loss: 0.4720 - val_loss: 0.6280</code></pre>
+<pre class="r"><code>kpred &lt;- predict(model, xrnn[!istrain,, ])</code></pre>
+<pre><code>## 56/56 - 0s - 6ms/step</code></pre>
+<pre class="r"><code>1 - mean((kpred - arframe[!istrain, &quot;log_volume&quot;])^2) / V0</code></pre>
+<pre><code>## [1] 0.4042403</code></pre>
+<p>This model takes about one minute to train. We could replace the
+<code>keras_model_sequential()</code> command above with the following
+command:</p>
+<pre class="r"><code>model &lt;- keras_model_sequential(
+  layers = list(
+    layer_input(shape = c(5L, 3L)),
+    layer_flatten(),
+    layer_dense(units = 1)
+  )
+)
+
+model |&gt; compile(optimizer = &quot;rmsprop&quot;, loss = &quot;mse&quot;)</code></pre>
+<p>Here, <code>layer_flatten()</code> simply takes the input sequence
+and turns it into a long vector of predictors. This results in a linear
+AR model. To fit a nonlinear AR model, we could add in a hidden
+layer.</p>
+<p>However, since we already have the matrix of lagged variables from
+the AR model that we fit earlier using the <code>lm()</code> command, we
+can actually fit a nonlinear AR model without needing to perform
+flattening. We extract the model matrix <code>x</code> from
+<code>arframed</code>, which includes the <code>day_of_week</code>
+variable.</p>
+<pre class="r"><code>x &lt;- model.matrix(log_volume ~ . - 1, data = arframed)
+colnames(x)</code></pre>
+<pre><code>##  [1] &quot;dayfri&quot;            &quot;daymon&quot;            &quot;daythur&quot;          
+##  [4] &quot;daytues&quot;           &quot;daywed&quot;            &quot;L1.DJ_return&quot;     
+##  [7] &quot;L1.log_volume&quot;     &quot;L1.log_volatility&quot; &quot;L2.DJ_return&quot;     
+## [10] &quot;L2.log_volume&quot;     &quot;L2.log_volatility&quot; &quot;L3.DJ_return&quot;     
+## [13] &quot;L3.log_volume&quot;     &quot;L3.log_volatility&quot; &quot;L4.DJ_return&quot;     
+## [16] &quot;L4.log_volume&quot;     &quot;L4.log_volatility&quot; &quot;L5.DJ_return&quot;     
+## [19] &quot;L5.log_volume&quot;     &quot;L5.log_volatility&quot;</code></pre>
+<p>The <code>-1</code> in the formula avoids the creation of a column of
+ones for the intercept. The variable <code>day_of_week</code> is a
+five-level factor (there are five trading days), and the <code>-1</code>
+results in five rather than four dummy variables.</p>
+<p>The rest of the steps to fit a nonlinear AR model should by now be
+familiar.</p>
+<pre class="r"><code>arnnd &lt;- keras_model_sequential(
+  layers = list(
+    layer_input(shape = as.integer(ncol(x))),
+    layer_dense(units = 32, activation = &quot;relu&quot;),
+    layer_dropout(rate = 0.5),
+    layer_dense(units = 1)
+  )
+) |&gt;
+  compile(optimizer = &quot;rmsprop&quot;, loss = &quot;mse&quot;)
+
+history &lt;- arnnd |&gt;
+  fit(
+    x[istrain, , drop = FALSE],
+    arframe[istrain, &quot;log_volume&quot;],
+    epochs = 30,
+    batch_size = 32,
+    validation_split = NULL,
+    validation_data = list(
+      x[!istrain, , drop = FALSE],
+      arframe[!istrain, &quot;log_volume&quot;]
+    ),
+    verbose = 2
+  )</code></pre>
+<pre><code>## Epoch 1/30
+## 134/134 - 1s - 6ms/step - loss: 1.0470 - val_loss: 0.7574
+## Epoch 2/30
+## 134/134 - 0s - 3ms/step - loss: 0.6815 - val_loss: 0.6635
+## Epoch 3/30
+## 134/134 - 0s - 3ms/step - loss: 0.5570 - val_loss: 0.6275
+## Epoch 4/30
+## 134/134 - 0s - 3ms/step - loss: 0.5140 - val_loss: 0.6061
+## Epoch 5/30
+## 134/134 - 0s - 3ms/step - loss: 0.4768 - val_loss: 0.5972
+## Epoch 6/30
+## 134/134 - 0s - 3ms/step - loss: 0.4725 - val_loss: 0.5886
+## Epoch 7/30
+## 134/134 - 0s - 3ms/step - loss: 0.4680 - val_loss: 0.5815
+## Epoch 8/30
+## 134/134 - 0s - 3ms/step - loss: 0.4661 - val_loss: 0.5789
+## Epoch 9/30
+## 134/134 - 0s - 3ms/step - loss: 0.4446 - val_loss: 0.5758
+## Epoch 10/30
+## 134/134 - 0s - 3ms/step - loss: 0.4534 - val_loss: 0.5744
+## Epoch 11/30
+## 134/134 - 0s - 3ms/step - loss: 0.4447 - val_loss: 0.5721
+## Epoch 12/30
+## 134/134 - 0s - 3ms/step - loss: 0.4432 - val_loss: 0.5711
+## Epoch 13/30
+## 134/134 - 0s - 3ms/step - loss: 0.4348 - val_loss: 0.5720
+## Epoch 14/30
+## 134/134 - 0s - 3ms/step - loss: 0.4328 - val_loss: 0.5709
+## Epoch 15/30
+## 134/134 - 0s - 3ms/step - loss: 0.4303 - val_loss: 0.5699
+## Epoch 16/30
+## 134/134 - 0s - 3ms/step - loss: 0.4326 - val_loss: 0.5672
+## Epoch 17/30
+## 134/134 - 0s - 3ms/step - loss: 0.4292 - val_loss: 0.5679
+## Epoch 18/30
+## 134/134 - 0s - 3ms/step - loss: 0.4353 - val_loss: 0.5675
+## Epoch 19/30
+## 134/134 - 0s - 3ms/step - loss: 0.4298 - val_loss: 0.5670
+## Epoch 20/30
+## 134/134 - 0s - 2ms/step - loss: 0.4260 - val_loss: 0.5658
+## Epoch 21/30
+## 134/134 - 0s - 3ms/step - loss: 0.4295 - val_loss: 0.5661
+## Epoch 22/30
+## 134/134 - 0s - 3ms/step - loss: 0.4290 - val_loss: 0.5646
+## Epoch 23/30
+## 134/134 - 0s - 3ms/step - loss: 0.4241 - val_loss: 0.5661
+## Epoch 24/30
+## 134/134 - 0s - 3ms/step - loss: 0.4339 - val_loss: 0.5651
+## Epoch 25/30
+## 134/134 - 0s - 3ms/step - loss: 0.4334 - val_loss: 0.5673
+## Epoch 26/30
+## 134/134 - 0s - 3ms/step - loss: 0.4314 - val_loss: 0.5659
+## Epoch 27/30
+## 134/134 - 0s - 3ms/step - loss: 0.4303 - val_loss: 0.5625
+## Epoch 28/30
+## 134/134 - 0s - 3ms/step - loss: 0.4191 - val_loss: 0.5642
+## Epoch 29/30
+## 134/134 - 0s - 3ms/step - loss: 0.4219 - val_loss: 0.5650
+## Epoch 30/30
+## 134/134 - 0s - 3ms/step - loss: 0.4208 - val_loss: 0.5635</code></pre>
+<pre class="r"><code># plot training history
+plot(history)</code></pre>
+<p><img src="dp-II_files/figure-html/chunk55-1.png" width="672" /></p>
+<pre class="r"><code>npred &lt;- predict(arnnd, x[!istrain, , drop = FALSE]) |&gt; as.numeric()</code></pre>
+<pre><code>## 56/56 - 0s - 2ms/step</code></pre>
+<pre class="r"><code>1 - mean((arframe[!istrain, &quot;log_volume&quot;] - npred)^2) / V0</code></pre>
+<pre><code>## [1] 0.4653884</code></pre>
+</div>
+</div>
+<div id="lstm-with-torch" class="section level2">
+<h2>LSTM with Torch</h2>
+<div id="imdb-document-classification-1" class="section level3">
+<h3>IMDb Document Classification</h3>
+<p>Our RNN requires all the document sequences to have the same length.
+We hence restrict the document lengths to the last <span
+class="math inline">\(L=500\)</span> words, and pad the beginning of the
+shorter ones with blanks. We will use <code>torchdatasets</code>
+functionality for this.</p>
+<pre class="r"><code># install.packages(&quot;torch&quot;)
+# install.packages(&quot;luz&quot;)
+# install.packages(&quot;torchvision&quot;)
+# install.packages(&quot;torchdatasets&quot;)
+# install.packages(&quot;zeallot&quot;)
+library(torch)</code></pre>
+<pre><code>## 
+## Attaching package: &#39;torch&#39;</code></pre>
+<pre><code>## The following object is masked from &#39;package:keras3&#39;:
+## 
+##     as_iterator</code></pre>
+<pre><code>## The following object is masked from &#39;package:reticulate&#39;:
+## 
+##     as_iterator</code></pre>
+<pre class="r"><code>library(luz) # high-level interface for torch</code></pre>
+<pre><code>## 
+## Attaching package: &#39;luz&#39;</code></pre>
+<pre><code>## The following object is masked from &#39;package:keras3&#39;:
+## 
+##     evaluate</code></pre>
+<pre class="r"><code>library(torchvision) # for datasets and image transformation
+library(torchdatasets) # for datasets we are going to use
+library(zeallot)
+torch_manual_seed(6805)</code></pre>
+<pre class="r"><code>maxlen &lt;- 500
+num_words &lt;- 10000
+imdb_train &lt;- imdb_dataset(root = &quot;.&quot;, split = &quot;train&quot;, num_words = num_words, maxlen = maxlen) # include argument &quot;download = TRUE&quot; for the first-time run
+imdb_test &lt;- imdb_dataset(root = &quot;.&quot;, split = &quot;test&quot;, num_words = num_words, maxlen = maxlen) # include argument &quot;download = TRUE&quot; for the first-time run
+
+vocab &lt;- c(rep(NA, imdb_train$index_from - 1), imdb_train$get_vocabulary())
+tail(names(vocab)[imdb_train[1]$x])</code></pre>
+<pre><code>## [1] &quot;seeing&quot; &quot;it&quot;     &quot;again&quot;  &quot;for&quot;    &quot;a&quot;      &quot;&quot;</code></pre>
+<p>The last expression shows the last few words in the first document.
+At this stage, each of the 500 words in the document is represented
+using an integer corresponding to the location of that word in the
+10,000-word dictionary. The first layer of the RNN is an embedding layer
+of size 32, which will be learned during training. This layer one-hot
+encodes each document as a matrix of dimension <span
+class="math inline">\(500 \times 10,000\)</span>, and then maps these
+10,000 dimensions down to 32.</p>
+<pre class="r"><code>model &lt;- nn_module(
+  initialize = function() {
+    self$embedding &lt;- nn_embedding(10000 + 3, 32)
+    self$lstm &lt;- nn_lstm(input_size = 32, hidden_size = 32, batch_first = TRUE)
+    self$dense &lt;- nn_linear(32, 1)
+  },
+  forward = function(x) {
+    c(output, c(hn, cn)) %&lt;-% (x %&gt;% 
+      self$embedding() %&gt;% 
+      self$lstm())
+    output[,-1,] %&gt;%  # get the last output
+      self$dense() %&gt;% 
+      torch_flatten(start_dim = 1)
+  }
+)</code></pre>
+<p>The second layer is an LSTM with 32 units, and the output layer is a
+single logit for the binary classification task. The rest is now similar
+to other networks we have fit. We track the test performance as the
+network is fit, and see that it attains 87% accuracy.</p>
+<pre class="r"><code>model &lt;- model %&gt;% 
+  setup(
+    loss = nn_bce_with_logits_loss(),
+    optimizer = optim_rmsprop,
+    metrics = list(luz_metric_binary_accuracy_with_logits())
+  ) %&gt;% 
+  set_opt_hparams(lr = 0.001)
+
+fitted &lt;- model %&gt;% fit(
+  imdb_train, 
+  epochs = 10,
+  dataloader_options = list(batch_size = 128),
+  valid_data = imdb_test
+)
+plot(fitted)</code></pre>
+<p><img src="dp-II_files/figure-html/unnamed-chunk-5-1.png" width="672" /></p>
+<pre class="r"><code>predy &lt;- torch_sigmoid(predict(fitted, imdb_test)) &gt; 0.5
+evaluate(fitted, imdb_test, dataloader_options = list(batch_size = 512))</code></pre>
+<pre><code>## A `luz_module_evaluation`
+## ── Results ─────────────────────────────────────────────────────────────────────
+## loss: 0.3771
+## acc: 0.8442</code></pre>
+</div>
+<div id="time-series-prediction-1" class="section level3">
+<h3>Time Series Prediction</h3>
+<p>We now show how to fit the models for time series prediction. We
+first set up the data, and standardize each of the variables.</p>
+<pre class="r"><code>library(ISLR2)
+xdata &lt;- data.matrix(
+ NYSE[, c(&quot;DJ_return&quot;, &quot;log_volume&quot;,&quot;log_volatility&quot;)]
+ )
+istrain &lt;- NYSE[, &quot;train&quot;]
+xdata &lt;- scale(xdata)</code></pre>
+<p>The variable <code>istrain</code> contains a <code>TRUE</code> for
+each year that is in the training set, and a <code>FALSE</code> for each
+year in the test set.</p>
+<p>We first write functions to create lagged versions of the three time
+series. We start with a function that takes as input a data matrix and a
+lag <span class="math inline">\(L\)</span>, and returns a lagged version
+of the matrix. It simply inserts <span class="math inline">\(L\)</span>
+rows of <code>NA</code> at the top, and truncates the bottom.</p>
+<pre class="r"><code>lagm &lt;- function(x, k = 1) {
+   n &lt;- nrow(x)
+   pad &lt;- matrix(NA, k, ncol(x))
+   rbind(pad, x[1:(n - k), ])
+}</code></pre>
+<p>We now use this function to create a data frame with all the required
+lags, as well as the response variable.</p>
+<pre class="r"><code>arframe &lt;- data.frame(log_volume = xdata[, &quot;log_volume&quot;],
+   L1 = lagm(xdata, 1), L2 = lagm(xdata, 2),
+   L3 = lagm(xdata, 3), L4 = lagm(xdata, 4),
+   L5 = lagm(xdata, 5)
+ )</code></pre>
+<p>If we look at the first five rows of this frame, we will see some
+missing values in the lagged variables (due to the construction above).
+We remove these rows, and adjust <code>istrain</code> accordingly.</p>
+<pre class="r"><code>arframe &lt;- arframe[-(1:5), ]
+istrain &lt;- istrain[-(1:5)]</code></pre>
+<!-- We now fit the linear AR model to the training data using `lm()`, and predict on the test data. -->
+<!-- ```{r} -->
+<!-- arfit <- lm(log_volume ~ ., data = arframe[istrain, ]) -->
+<!-- arpred <- predict(arfit, arframe[!istrain, ]) -->
+<!-- V0 <- var(arframe[!istrain, "log_volume"]) -->
+<!-- 1 - mean((arpred - arframe[!istrain, "log_volume"])^2) / V0 -->
+<!-- ``` -->
+<!-- The last two lines compute the $R^2$ on the test data, as defined in (3.17). -->
+<!-- We refit this model, including the factor variable `day_of_week`. -->
+<!-- ```{r} -->
+<!-- arframed <- -->
+<!--     data.frame(day = NYSE[-(1:5), "day_of_week"], arframe) -->
+<!-- arfitd <- lm(log_volume ~ ., data = arframed[istrain, ]) -->
+<!-- arpredd <- predict(arfitd, arframed[!istrain, ]) -->
+<!-- 1 - mean((arpredd - arframe[!istrain, "log_volume"])^2) / V0 -->
+<!-- ``` -->
+<p>To fit the RNN, we need to reshape these data, since it expects a
+sequence of <span class="math inline">\(L=5\)</span> feature vectors
+<span class="math inline">\(X=\{X_\ell\}_1^L\)</span> for each
+observation. These are lagged versions of the time series going back
+<span class="math inline">\(L\)</span> time points.</p>
+<pre class="r"><code>n &lt;- nrow(arframe)
+xrnn &lt;- data.matrix(arframe[, -1])
+xrnn &lt;- array(xrnn, c(n, 3, 5))
+xrnn &lt;- xrnn[,, 5:1]
+xrnn &lt;- aperm(xrnn, c(1, 3, 2))
+dim(xrnn)</code></pre>
+<pre><code>## [1] 6046    5    3</code></pre>
+<p>We have done this in four steps. The first simply extracts the <span
+class="math inline">\(n\times 15\)</span> matrix of lagged versions of
+the three predictor variables from <code>arframe</code>. The second
+converts this matrix to a <span class="math inline">\(n\times 3\times
+5\)</span> array. We can do this by simply changing the dimension
+attribute, since the new array is filled column wise. The third step
+reverses the order of lagged variables, so that index 1 is furthest back
+in time, and index 5 closest. The final step rearranges the coordinates
+of the array (like a partial transpose) into the format that the RNN
+module in <code>torch</code> expects.</p>
+<p>Now we are ready to proceed with the RNN, which uses 12 hidden
+units.</p>
+<pre class="r"><code>model &lt;- nn_module(
+  initialize = function() {
+    self$rnn &lt;- nn_rnn(3, 12, batch_first = TRUE)
+    self$dense &lt;- nn_linear(12, 1)
+    self$dropout &lt;- nn_dropout(0.2)
+  },
+  forward = function(x) {
+    c(output, ...) %&lt;-% (x %&gt;% 
+      self$rnn())
+    output[,-1,] %&gt;% 
+      self$dropout() %&gt;% 
+      self$dense() %&gt;% 
+      torch_flatten(start_dim = 1)
+  }
+)
+
+model &lt;- model %&gt;% 
+  setup(
+    optimizer = optim_rmsprop,
+    loss = nn_mse_loss()
+  ) %&gt;% 
+  set_opt_hparams(lr = 0.001)</code></pre>
+<p>The output layer has a single unit for the response.</p>
+<p>We fit the model in a similar fashion to previous networks. We supply
+the <code>fit</code> function with test data as validation data, so that
+when we monitor its progress and plot the history function we can see
+the progress on the test data. Of course we should not use this as a
+basis for early stopping, since then the test performance would be
+biased.</p>
+<pre class="r"><code>fitted &lt;- model %&gt;% fit(
+    list(xrnn[istrain,, ], arframe[istrain, &quot;log_volume&quot;]),
+    epochs = 30, # = 200,
+    dataloader_options = list(batch_size = 64),
+    valid_data =
+      list(xrnn[!istrain,, ], arframe[!istrain, &quot;log_volume&quot;])
+  )</code></pre>
+<pre><code>## Warning in (structure(function (x) : collector syntax has changed,
+##   * Please use `..` instead of `...`
+##   * `` =&gt; ``</code></pre>
+<pre class="r"><code>kpred &lt;- as.numeric(predict(fitted, xrnn[!istrain,, ]))
+1 - mean((kpred - arframe[!istrain, &quot;log_volume&quot;])^2) / V0</code></pre>
+<pre><code>## [1] 0.4049898</code></pre>
+<p>This model takes about one minute to train.</p>
+<p>We could replace the <code>nn_module()</code> command above with the
+following command:</p>
+<pre class="r"><code>model &lt;- nn_module(
+  initialize = function() {
+    self$dense &lt;- nn_linear(15, 1)
+  },
+  forward = function(x) {
+    x %&gt;% 
+      torch_flatten(start_dim = 2) %&gt;% 
+      self$dense()
+  }
+)</code></pre>
+<p>Here, <code>torch_flatten()</code> simply takes the input sequence
+and turns it into a long vector of predictors. This results in a linear
+AR model. To fit a nonlinear AR model, we could add in a hidden
+layer.</p>
+<p>However, since we already have the matrix of lagged variables from
+the AR model that we fit earlier using the <code>lm()</code> command, we
+can actually fit a nonlinear AR model without needing to perform
+flattening. We extract the model matrix <code>x</code> from
+<code>arframed</code>, which includes the <code>day_of_week</code>
+variable.</p>
+<pre class="r"><code>x &lt;- model.matrix(log_volume ~ . - 1, data = arframed)
+colnames(x)</code></pre>
+<pre><code>##  [1] &quot;dayfri&quot;            &quot;daymon&quot;            &quot;daythur&quot;          
+##  [4] &quot;daytues&quot;           &quot;daywed&quot;            &quot;L1.DJ_return&quot;     
+##  [7] &quot;L1.log_volume&quot;     &quot;L1.log_volatility&quot; &quot;L2.DJ_return&quot;     
+## [10] &quot;L2.log_volume&quot;     &quot;L2.log_volatility&quot; &quot;L3.DJ_return&quot;     
+## [13] &quot;L3.log_volume&quot;     &quot;L3.log_volatility&quot; &quot;L4.DJ_return&quot;     
+## [16] &quot;L4.log_volume&quot;     &quot;L4.log_volatility&quot; &quot;L5.DJ_return&quot;     
+## [19] &quot;L5.log_volume&quot;     &quot;L5.log_volatility&quot;</code></pre>
+<p>The <code>-1</code> in the formula avoids the creation of a column of
+ones for the intercept. The variable <code>day\_of\_week</code> is a
+five-level factor (there are five trading days), and the <code>-1</code>
+results in five rather than four dummy variables.</p>
+<p>The rest of the steps to fit a nonlinear AR model should by now be
+familiar.</p>
+<pre class="r"><code>arnnd &lt;- nn_module(
+  initialize = function() {
+    self$dense &lt;- nn_linear(20, 32)
+    self$dropout &lt;- nn_dropout(0.5)
+    self$activation &lt;- nn_relu()
+    self$output &lt;- nn_linear(32, 1)
+    
+  },
+  forward = function(x) {
+    x %&gt;% 
+      torch_flatten(start_dim = 2) %&gt;% 
+      self$dense() %&gt;% 
+      self$activation() %&gt;% 
+      self$dropout() %&gt;% 
+      self$output() %&gt;% 
+      torch_flatten(start_dim = 1)
+  }
+)
+arnnd &lt;- arnnd %&gt;% 
+  setup(
+    optimizer = optim_rmsprop,
+    loss = nn_mse_loss()
+  ) %&gt;% 
+  set_opt_hparams(lr = 0.001)
+
+fitted &lt;- arnnd %&gt;% fit(
+    list(x[istrain,], arframe[istrain, &quot;log_volume&quot;]),
+    epochs = 30, 
+    dataloader_options = list(batch_size = 64),
+    valid_data =
+      list(x[!istrain,], arframe[!istrain, &quot;log_volume&quot;])
+  )
+plot(fitted)</code></pre>
+<p><img src="dp-II_files/figure-html/unnamed-chunk-15-1.png" width="672" /></p>
+<pre class="r"><code>npred &lt;- as.numeric(predict(fitted, x[!istrain, ]))
+1 - mean((arframe[!istrain, &quot;log_volume&quot;] - npred)^2) / V0</code></pre>
+<pre><code>## [1] 0.4676421</code></pre>
+</div>
+</div>
+
+
+
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+function bootstrapStylePandocTables() {
+  $('tr.odd').parent('tbody').parent('table').addClass('table table-condensed');
+}
+$(document).ready(function () {
+  bootstrapStylePandocTables();
+});
+
+
+</script>
+
+<!-- tabsets -->
+
+<script>
+$(document).ready(function () {
+  window.buildTabsets("TOC");
+});
+
+$(document).ready(function () {
+  $('.tabset-dropdown > .nav-tabs > li').click(function () {
+    $(this).parent().toggleClass('nav-tabs-open');
+  });
+});
+</script>
+
+<!-- code folding -->
+
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://personal.ntu.edu.sg/cspun/mathjax/tex-svg.js";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>
